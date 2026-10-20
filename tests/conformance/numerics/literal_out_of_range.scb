@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: literal-out-of-range
+
+namespace Conformance;
+
+function main(): void
+{
+    $b: u8 = 300;
+}

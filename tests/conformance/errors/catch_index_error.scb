@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | caught
+// | finally
+
+namespace Conformance;
+
+function main(): void
+{
+    $l: list<int> = [1];
+    try {
+        $x: int = $l[5];
+    } catch ($e: IndexError | KeyError) {
+        echo "caught\n";
+    } finally {
+        echo "finally\n";
+    }
+}

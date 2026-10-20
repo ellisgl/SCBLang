@@ -1,0 +1,38 @@
+// EXPECT-STDOUT:
+// | 2 21 6 2
+
+namespace Conformance;
+
+struct Point
+{
+    public function __construct(public $x: int, public $y: int) {}
+}
+
+class Box
+{
+    public static $hits: int = 0;
+
+    public function __construct(public $v: int) {}
+}
+
+function bump(inout $n: int): void
+{
+    $n += 1;
+}
+
+function main(): void
+{
+    $p: Point = new Point(1, 2);
+    bump(inout $p->x);
+
+    $l: list<int> = [10, 20];
+    bump(inout $l[1]);
+
+    $b: Box = new Box(5);
+    bump(inout $b->v);
+
+    bump(inout Box::$hits);
+    bump(inout Box::$hits);
+
+    echo $p->x, " ", $l[1], " ", $b->v, " ", Box::$hits, "\n";
+}

@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: string-subscript
+
+namespace Conformance;
+
+function main(): void
+{
+    $s: string = "héllo";
+    $c: string = $s[0];
+}

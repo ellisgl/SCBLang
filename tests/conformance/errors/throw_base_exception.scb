@@ -1,0 +1,20 @@
+// EXPECT-STDOUT:
+// | caught Exception
+// | caught Error
+
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        throw new Exception('failed');
+    } catch (\Exception) {
+        echo "caught Exception\n";
+    }
+
+    try {
+        throw new \Error('failed');
+    } catch (Error) {
+        echo "caught Error\n";
+    }
+}

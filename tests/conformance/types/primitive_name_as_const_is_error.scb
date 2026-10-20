@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: prelude-name-redeclared
+
+namespace Conformance;
+
+const i8: int = 1;
+
+function main(): void
+{
+}

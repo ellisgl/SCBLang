@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: f64 = 7 / 2;
+}

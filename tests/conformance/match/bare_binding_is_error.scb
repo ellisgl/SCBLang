@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: bare-binding-pattern
+
+namespace Conformance;
+
+function main(): void
+{
+    $limit: int = 5;
+    $x: int = 5;
+    $r: string = match ($x) {
+        $limit  => 'at limit',
+        default => 'other',
+    };
+}

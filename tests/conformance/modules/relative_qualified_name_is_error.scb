@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: unresolved-name
+
+namespace Conformance;
+
+function main(): void
+{
+    // Resolves to Conformance\Math\mod, which does not exist. Write \Math\mod.
+    echo Math\mod(-7, 2), "\n";
+}

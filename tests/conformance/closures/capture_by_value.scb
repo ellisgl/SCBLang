@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// | 1
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    $f: fn(): int = fn(): int => $n;
+    $n = 2;
+    echo $f(), "\n";
+}

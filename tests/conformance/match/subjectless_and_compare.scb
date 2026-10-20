@@ -1,0 +1,24 @@
+// EXPECT-STDOUT:
+// | teen
+// | at limit
+
+namespace Conformance;
+
+function main(): void
+{
+    $age: int = 15;
+    $group: string = match {
+        $age < 13 => 'child',
+        $age < 20 => 'teen',
+        default   => 'adult',
+    };
+    echo $group, "\n";
+
+    $limit: int = 5;
+    $x: int = 5;
+    $r: string = match ($x) {
+        == $limit => 'at limit',
+        default   => 'other',
+    };
+    echo $r, "\n";
+}

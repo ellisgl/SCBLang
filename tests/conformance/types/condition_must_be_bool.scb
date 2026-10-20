@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: non-bool-condition
+
+namespace Conformance;
+
+function main(): void
+{
+    $count: int = 3;
+    if ($count) {
+        echo "yes\n";
+    }
+}

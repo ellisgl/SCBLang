@@ -1,0 +1,22 @@
+// EXPECT-RUNTIME-ERROR: ExclusivityError
+
+namespace Conformance;
+
+class Box
+{
+    public function __construct(public $v: int) {}
+}
+
+function swap(inout $a: int, inout $b: int): void
+{
+    $t: int = $a;
+    $a = $b;
+    $b = $t;
+}
+
+function main(): void
+{
+    $b: Box = new Box(1);
+    $c: Box = $b;
+    swap(inout $b->v, inout $c->v);
+}

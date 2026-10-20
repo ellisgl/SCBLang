@@ -1,0 +1,7 @@
+// EXPECT-COMPILE-ERROR: reserved-namespace
+
+namespace Math;
+
+function main(): void
+{
+}

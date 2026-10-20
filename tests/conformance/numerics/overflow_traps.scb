@@ -1,0 +1,9 @@
+// EXPECT-RUNTIME-ERROR: OverflowError
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: i8 = 127;
+    $x += 1;
+}

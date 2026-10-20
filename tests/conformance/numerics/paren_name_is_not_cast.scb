@@ -1,0 +1,13 @@
+// EXPECT-STDOUT:
+// | 9 -1
+
+namespace Conformance;
+
+const MAX: int = 10;
+
+function main(): void
+{
+    $a: int = (MAX) - 1;
+    $b: int = (int) -1;
+    echo $a, " ", $b, "\n";
+}

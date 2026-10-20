@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: i32 = 1;
+    $b: i64 = 2;
+    $c: i64 = $a + $b;
+}

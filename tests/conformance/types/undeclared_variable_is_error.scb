@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: undeclared-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    $x = 1;
+}

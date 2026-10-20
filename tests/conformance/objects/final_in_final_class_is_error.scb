@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: redundant-final
+
+namespace Conformance;
+
+class Plain
+{
+    public final function id(): string
+    {
+        return 'plain';
+    }
+}
+
+function main(): void
+{
+}

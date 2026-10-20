@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// | even odd even
+
+namespace Conformance;
+
+function main(): void
+{
+    for ($i: int = 0; $i < 3; $i++) {
+        echo $i % 2 == 0 ? 'even' : 'odd';
+        echo $i < 2 ? ' ' : "\n";
+    }
+}

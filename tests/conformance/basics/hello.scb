@@ -1,0 +1,9 @@
+// EXPECT-STDOUT:
+// | Hello, SCB
+
+namespace Conformance;
+
+function main(): void
+{
+    echo "Hello, SCB\n";
+}

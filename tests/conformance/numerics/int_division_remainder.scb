@@ -1,0 +1,9 @@
+// EXPECT-STDOUT:
+// | 3 -3 -1 1
+
+namespace Conformance;
+
+function main(): void
+{
+    echo 7 ~/ 2, " ", -7 ~/ 2, " ", -7 % 2, " ", \Math\mod(-7, 2), "\n";
+}

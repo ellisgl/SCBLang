@@ -1,0 +1,26 @@
+namespace App;
+
+// CGI smoke test (POC milestone M8). Run by fcgiwrap via handler.cgi.
+// CGI contract: request metadata from Env\get(), body from Io\readAll(),
+// response (headers, blank line, body) via echo.
+
+function main(): int
+{
+    $method: string = \Env\get('REQUEST_METHOD') ?? 'GET';
+    $query: string = \Env\get('QUERY_STRING') ?? '';
+
+    // SPEC-OPEN: Q1 — bytes API; provisional count() and Str\fromUtf8().
+    $body: bytes = \Io\readAll();
+
+    echo "Content-Type: text/plain; charset=utf-8\r\n";
+    echo "\r\n";
+    echo "method: {$method}\n";
+    echo "query: {$query}\n";
+    echo "body bytes: {$body->count()}\n";
+
+    if ($query == 'fail') {
+        throw new \Exception('requested failure');
+    }
+
+    return 0;
+}

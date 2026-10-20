@@ -1,0 +1,18 @@
+// ENV: GREETING=hi
+// STDIN:
+// | first line
+// | second line
+// EXPECT-STDOUT:
+// | hi
+// | first line
+// | (unset)
+
+namespace Conformance;
+
+function main(): void
+{
+    echo \Env\get('GREETING') ?? '(unset)', "\n";
+    $line: ?string = \Io\readLine();
+    echo $line ?? '(eof)', "\n";
+    echo \Env\get('HOME') ?? '(unset)', "\n";
+}

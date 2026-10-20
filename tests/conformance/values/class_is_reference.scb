@@ -1,0 +1,21 @@
+// EXPECT-STDOUT:
+// | 2
+// | same
+
+namespace Conformance;
+
+class Counter
+{
+    public function __construct(public $n: int) {}
+}
+
+function main(): void
+{
+    $a: Counter = new Counter(1);
+    $b: Counter = $a;
+    $b->n = 2;
+    echo $a->n, "\n";
+    if ($a is $b) {
+        echo "same\n";
+    }
+}

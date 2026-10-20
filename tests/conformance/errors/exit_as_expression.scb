@@ -1,0 +1,16 @@
+// ENV: PORT=8080
+// EXPECT-STDOUT:
+// | 8080
+// | missing
+// EXPECT-EXIT: 2
+
+namespace Conformance;
+
+function main(): void
+{
+    $port: string = \Env\get('PORT') ?? exit(2);
+    echo $port, "\n";
+    echo "missing\n";
+    $host: string = \Env\get('HOST') ?? exit(2);
+    echo $host, "\n";
+}

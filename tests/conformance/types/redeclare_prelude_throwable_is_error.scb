@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: prelude-name-redeclared
+
+namespace Conformance;
+
+class IndexError extends Exception
+{
+}
+
+function main(): void
+{
+}

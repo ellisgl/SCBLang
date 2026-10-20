@@ -1,0 +1,23 @@
+// EXPECT-COMPILE-ERROR: override-final
+
+namespace Conformance;
+
+extendable class Base
+{
+    public final function id(): string
+    {
+        return 'base';
+    }
+}
+
+class Child extends Base
+{
+    public function id(): string
+    {
+        return 'child';
+    }
+}
+
+function main(): void
+{
+}

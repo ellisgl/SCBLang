@@ -1,0 +1,14 @@
+// EXPECT-STDOUT:
+// | cleanup
+// EXPECT-EXIT: 4
+
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        exit(4);
+    } finally {
+        echo "cleanup\n";
+    }
+}

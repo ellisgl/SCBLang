@@ -1,0 +1,22 @@
+// EXPECT-STDOUT:
+// | 7 2
+
+namespace Conformance;
+
+struct Line
+{
+    public function __construct(public $sku: string, public $qty: int) {}
+}
+
+struct Order
+{
+    public function __construct(public $lines: list<Line>) {}
+}
+
+function main(): void
+{
+    $o: Order = new Order([new Line('a', 1), new Line('b', 2)]);
+    $copy: Order = $o;
+    $o->lines[1]->qty += 5;
+    echo $o->lines[1]->qty, " ", $copy->lines[1]->qty, "\n";
+}

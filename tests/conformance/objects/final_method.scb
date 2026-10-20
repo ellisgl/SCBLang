@@ -1,0 +1,31 @@
+// EXPECT-STDOUT:
+// | base id, child name
+
+namespace Conformance;
+
+extendable class Base
+{
+    public final function id(): string
+    {
+        return 'base id';
+    }
+
+    public function name(): string
+    {
+        return 'base name';
+    }
+}
+
+class Child extends Base
+{
+    public function name(): string
+    {
+        return 'child name';
+    }
+}
+
+function main(): void
+{
+    $c: Child = new Child();
+    echo $c->id(), ", ", $c->name(), "\n";
+}

@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: missing-return-type
+
+namespace Conformance;
+
+function main(): void
+{
+    $double: fn(int): int = fn($x: int) => $x * 2;
+}

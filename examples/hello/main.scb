@@ -1,0 +1,24 @@
+namespace App;
+
+struct Point
+{
+    public function __construct(public $x: int, public $y: int) {}
+
+    public mutating function shift($dx: int): void
+    {
+        $this->x += $dx;
+    }
+}
+
+function main($args: list<string>): int
+{
+    $name: string = $args->first() ?? 'world';
+    echo "Hello, {$name}!\n";
+
+    $p: Point = new Point(1, 2);
+    $q: Point = $p;
+    $q->shift(10);
+    echo "p.x = {$p->x}, q.x = {$q->x}\n";   // 1, 11: structs are values
+
+    return 0;
+}

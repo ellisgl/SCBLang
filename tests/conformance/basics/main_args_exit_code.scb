@@ -1,0 +1,11 @@
+// EXPECT-STDOUT:
+// | 0
+// EXPECT-EXIT: 3
+
+namespace Conformance;
+
+function main($args: list<string>): int
+{
+    echo $args->count(), "\n";
+    return 3;
+}

@@ -1,0 +1,14 @@
+// EXPECT-STDOUT:
+// | 200 127 1.5
+// SPEC-OPEN: Q4
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: u8 = 200;
+    $x: i8 = 100;
+    $x += 27;
+    $g: f32 = 1.5;
+    echo $a, " ", $x, " ", $g, "\n";
+}

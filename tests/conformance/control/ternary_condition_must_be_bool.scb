@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: non-bool-condition
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    $s: string = $n ? 'yes' : 'no';
+}

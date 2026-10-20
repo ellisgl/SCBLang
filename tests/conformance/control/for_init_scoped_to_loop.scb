@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: undeclared-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    for ($i: int = 0; $i < 3; $i++) {
+    }
+    echo $i, "\n";
+}

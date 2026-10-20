@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// | a
+// |
+// | b
+// EXPECT-STDOUT-NO-FINAL-NEWLINE
+
+namespace Conformance;
+
+function main(): void
+{
+    echo "a\n\nb";
+}

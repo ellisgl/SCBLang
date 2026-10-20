@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | 2
+
+namespace Conformance;
+
+function addItem(inout $items: list<int>, $v: int): void
+{
+    $items->push($v);
+}
+
+function main(): void
+{
+    $list: list<int> = [];
+    addItem(inout $list, 5);
+    addItem(inout $list, 6);
+    echo $list->count(), "\n";
+}

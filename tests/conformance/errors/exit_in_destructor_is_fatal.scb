@@ -1,0 +1,20 @@
+// EXPECT-STDOUT:
+// | done
+// EXPECT-STDERR-CONTAINS: __destruct
+// EXPECT-EXIT: 1
+
+namespace Conformance;
+
+class Closer
+{
+    public function __destruct()
+    {
+        exit(3);
+    }
+}
+
+function main(): void
+{
+    $c: Closer = new Closer();
+    echo "done\n";
+}

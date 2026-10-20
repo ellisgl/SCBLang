@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// | 3 4
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: list<int> = [1, 2, 3];
+    $b: list<int> = $a;
+    $b->push(4);
+    echo $a->count(), " ", $b->count(), "\n";
+}

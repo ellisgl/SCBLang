@@ -1,0 +1,16 @@
+// EXPECT-STDOUT:
+// EXPECT-STDERR-CONTAINS: discarded by exit(2)
+// EXPECT-STDERR-CONTAINS: KeyError
+// EXPECT-EXIT: 2
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: map<string, int> = ['a' => 1];
+    try {
+        $v: int = $m['b'];
+    } finally {
+        exit(2);
+    }
+}

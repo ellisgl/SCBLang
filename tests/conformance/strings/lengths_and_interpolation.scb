@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// | héllo: 6 bytes, 5 codepoints
+// | HÉLLO
+
+namespace Conformance;
+
+function main(): void
+{
+    $s: string = "héllo";
+    echo "{$s}: {$s->byteLength()} bytes, {$s->codepointLength()} codepoints\n";
+    echo $s->toUpper(), "\n";
+}

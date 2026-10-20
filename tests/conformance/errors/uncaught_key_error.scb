@@ -1,0 +1,9 @@
+// EXPECT-RUNTIME-ERROR: KeyError
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: map<string, int> = ['a' => 1];
+    $v: int = $m['b'];
+}

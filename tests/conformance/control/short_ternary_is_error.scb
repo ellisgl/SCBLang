@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: short-ternary
+
+namespace Conformance;
+
+function main(): void
+{
+    $name: ?string = null;
+    $shown: string = $name ?: 'anon';
+}

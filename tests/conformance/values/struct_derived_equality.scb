@@ -1,0 +1,23 @@
+// EXPECT-STDOUT:
+// | equal
+// | different
+
+namespace Conformance;
+
+struct Point
+{
+    public function __construct(public $x: int, public $y: int) {}
+}
+
+function main(): void
+{
+    $a: Point = new Point(1, 2);
+    $b: Point = new Point(1, 2);
+    $c: Point = new Point(2, 1);
+    if ($a == $b) {
+        echo "equal\n";
+    }
+    if ($a != $c) {
+        echo "different\n";
+    }
+}

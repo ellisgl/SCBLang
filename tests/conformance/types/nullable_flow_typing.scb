@@ -1,0 +1,18 @@
+// EXPECT-STDOUT:
+// | 3
+// | missing
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: map<string, int> = ['a' => 3];
+    foreach (['a', 'b'] as $k) {
+        $v: ?int = $m->get($k);
+        if ($v != null) {
+            echo $v, "\n";      // $v narrowed from ?int to int
+        } else {
+            echo "missing\n";
+        }
+    }
+}

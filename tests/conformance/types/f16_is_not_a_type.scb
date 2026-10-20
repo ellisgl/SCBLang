@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: unresolved-name
+
+namespace Conformance;
+
+function main(): void
+{
+    $h: f16 = 1.0;
+}

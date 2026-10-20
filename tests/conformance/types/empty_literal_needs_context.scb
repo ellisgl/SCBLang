@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: cannot-infer
+
+namespace Conformance;
+
+function main(): void
+{
+    foreach ([] as $x) {
+    }
+}

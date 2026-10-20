@@ -1,0 +1,18 @@
+// EXPECT-COMPILE-ERROR: mutating-temporary
+
+namespace Conformance;
+
+function makeList(): list<int>
+{
+    return [1, 2];
+}
+
+function bump(inout $n: int): void
+{
+    $n += 1;
+}
+
+function main(): void
+{
+    bump(inout makeList()[0]);
+}

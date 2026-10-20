@@ -1,0 +1,13 @@
+// EXPECT-STDOUT:
+// | Content-Type: text/plain
+// | partial
+// EXPECT-RUNTIME-ERROR: Exception
+
+namespace Conformance;
+
+function main(): void
+{
+    echo "Content-Type: text/plain\n";
+    echo "partial\n";
+    throw new Exception('failed');
+}

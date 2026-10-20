@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: bool-cast
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 3;
+    $b: bool = (bool) $n;
+}

@@ -1,0 +1,25 @@
+// EXPECT-STDOUT:
+// | 9 6 16
+// SPEC-OPEN: Q8
+
+namespace Conformance;
+
+enum Shape
+{
+    case SQUARE($s: int);
+    case RECT($w: int, $h: int);
+}
+
+function area($shape: Shape): int
+{
+    return match ($shape) {
+        Shape::SQUARE($s)               => $s * $s,
+        Shape::RECT($w, $h) if $w == $h => $w * $w,
+        Shape::RECT($w, $h)             => $w * $h,
+    };
+}
+
+function main(): void
+{
+    echo area(Shape::SQUARE(3)), " ", area(Shape::RECT(2, 3)), " ", area(Shape::RECT(4, 4)), "\n";
+}
