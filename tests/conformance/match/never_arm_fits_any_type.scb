@@ -1,0 +1,19 @@
+// EXPECT-STDOUT:
+// | zero
+// | 7
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 0;
+    $a: string = match ($n) {
+        0       => 'zero',
+        default => throw new Exception('unexpected'),
+    };
+    $b: int|string = match ($n) { 1 => 'one', default => 7 };
+    echo $a, "\n";
+    if ($b instanceof int) {
+        echo $b, "\n";
+    }
+}

@@ -1,0 +1,27 @@
+// EXPECT-STDOUT:
+// | 7 5 is string
+
+namespace Conformance;
+
+function size($x: int|string): int
+{
+    return match ($x) {
+        $n: int    => $n,
+        $s: string => $s->byteLength(),
+    };
+}
+
+function pick(): int|string
+{
+    return 'hello';
+}
+
+function main(): void
+{
+    $u: int|string = pick();
+    echo size(7), " ", size($u);
+    if ($u instanceof string) {
+        echo " is string";
+    }
+    echo "\n";
+}

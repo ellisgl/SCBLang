@@ -1,0 +1,16 @@
+// STDIN-RAW: ok\n\xFF\xFE\n
+// EXPECT-STDOUT:
+// | ok
+// | encoding error
+
+namespace Conformance;
+
+function main(): void
+{
+    echo \Io\readLine() ?? 'eof', "\n";
+    try {
+        $bad: ?string = \Io\readLine();
+    } catch (EncodingException) {
+        echo "encoding error\n";
+    }
+}

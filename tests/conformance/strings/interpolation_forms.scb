@@ -1,0 +1,11 @@
+// EXPECT-STDOUT:
+// | Hi Ken, Ken->x, 2 items
+
+namespace Conformance;
+
+function main(): void
+{
+    $name: string = 'Ken';
+    $items: list<int> = [1, 2];
+    echo "Hi $name, {$name}->x, {$items->count()} items\n";
+}

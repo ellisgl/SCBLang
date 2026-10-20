@@ -4,7 +4,7 @@ namespace Conformance;
 
 extendable class Base
 {
-    public final function id(): string
+    final public function id(): string
     {
         return 'base';
     }

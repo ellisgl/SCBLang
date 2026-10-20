@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | a 1
+// | a 5 1
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: map<string, int> = ['a' => 1];
+    $entries: list<tuple<string, int>> = $m->entries();
+    echo $entries[0][0], " ", $entries[0][1], "\n";
+
+    $pair: tuple<string, int> = $entries[0];
+    $copy: tuple<string, int> = $pair;
+    $pair[1] = 5;
+    echo $pair[0], " ", $pair[1], " ", $copy[1], "\n";
+}

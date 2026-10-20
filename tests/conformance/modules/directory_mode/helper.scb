@@ -1,0 +1,6 @@
+namespace Conformance;
+
+function greeting(): string
+{
+    return 'hello from helper';
+}

@@ -1,0 +1,17 @@
+// STDIN-RAW: one\r\ntwo\nthree
+// EXPECT-STDOUT:
+// | [one]
+// | [two]
+// | [three]
+// | eof
+
+namespace Conformance;
+
+function main(): void
+{
+    $line: ?string = null;
+    while (($line = \Io\readLine()) != null) {
+        echo "[{$line}]\n";
+    }
+    echo "eof\n";
+}

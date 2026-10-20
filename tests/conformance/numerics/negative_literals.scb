@@ -1,0 +1,19 @@
+// EXPECT-STDOUT:
+// | -128 neg one small other
+
+namespace Conformance;
+
+function classify($n: int): string
+{
+    return match ($n) {
+        -1      => 'neg one',
+        -10..=0 => 'small',
+        default => 'other',
+    };
+}
+
+function main(): void
+{
+    $x: i8 = -128;
+    echo $x, " ", classify(-1), " ", classify(-5), " ", classify(3), "\n";
+}

@@ -1,0 +1,12 @@
+// ARG: fine
+// ARG: \xFF
+// EXPECT-STDOUT:
+// EXPECT-STDERR-CONTAINS: EncodingException
+// EXPECT-EXIT: 1
+
+namespace Conformance;
+
+function main($args: list<string>): void
+{
+    echo "main ran\n";
+}

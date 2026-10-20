@@ -4,7 +4,7 @@ namespace Conformance;
 
 class Plain
 {
-    public final function id(): string
+    final public function id(): string
     {
         return 'plain';
     }

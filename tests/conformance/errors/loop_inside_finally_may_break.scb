@@ -1,0 +1,18 @@
+// EXPECT-STDOUT:
+// | 0
+// | done
+
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        echo "";
+    } finally {
+        foreach ([0, 1, 2] as $i) {
+            echo $i, "\n";
+            break;
+        }
+        echo "done\n";
+    }
+}

@@ -1,0 +1,22 @@
+// EXPECT-COMPILE-ERROR: uninitialized-property
+
+namespace Conformance;
+
+class User
+{
+    public $name: string;
+
+    public function __construct($n: string)
+    {
+        $this->log();
+        $this->name = $n;
+    }
+
+    public function log(): void
+    {
+    }
+}
+
+function main(): void
+{
+}

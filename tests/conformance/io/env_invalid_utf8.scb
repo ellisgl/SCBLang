@@ -1,0 +1,9 @@
+// ENV-RAW: BAD=\xC3\x28
+// EXPECT-RUNTIME-ERROR: EncodingException
+
+namespace Conformance;
+
+function main(): void
+{
+    $v: ?string = \Env\get('BAD');
+}

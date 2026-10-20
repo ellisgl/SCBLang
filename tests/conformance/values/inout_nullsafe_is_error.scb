@@ -7,6 +7,11 @@ class Box
     public function __construct(public $v: int) {}
 }
 
+function maybeBox(): ?Box
+{
+    return new Box(1);
+}
+
 function bump(inout $n: int): void
 {
     $n += 1;
@@ -14,6 +19,6 @@ function bump(inout $n: int): void
 
 function main(): void
 {
-    $b: ?Box = new Box(1);
+    $b: ?Box = maybeBox();
     bump(inout $b?->v);
 }

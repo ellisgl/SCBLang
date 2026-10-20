@@ -15,7 +15,8 @@ SCB (Semi-colons and Curly Braces) is a statically typed, PHP-derived language: 
 
 - Source files are `.scb`, UTF-8. Templates are `.scbt`.
 - Files contain declarations only; no top-level statements.
-- The package manifest names the entry file; default `main.scb`. `scb run path/to/file.scb` runs any file that defines `main`. Libraries have no `main`.
+- The package manifest names the entry file; default `main.scb`. Libraries have no `main`.
+- Without a manifest, the argument picks the mode. `scb run path/to/file.scb` compiles exactly that file (single-file mode), which must define `main`. `scb run path/to/dir/` compiles every `.scb` file directly in that directory (not subdirectories) as one module; `main` must be defined in `main.scb`. `scb check` takes the same arguments. A manifest (`scb.toml`, post-POC) adds package mode without changing either form.
 
 Allowed `main` signatures:
 
@@ -31,7 +32,7 @@ function main($args: list<string>): int
 - `main` runs inside the root fiber, so I/O can suspend without setup.
 - A `void` return exits 0. A returned `int` outside 0–255 raises an `Error` on POSIX.
 - An uncaught throwable prints a stack trace to stderr and exits 1.
-- Stdout is buffered (size implementation-defined). The buffer is flushed when full, before a read from stdin, on normal return from `main`, on `exit`, and on an uncaught throwable before the trace is printed: output already echoed is never lost. Stderr is unbuffered. `Process\abort()` does not flush.
+- Stdout is buffered (size implementation-defined). The buffer is flushed when full, before a read from stdin, on normal return from `main`, on `exit`, on an uncaught throwable before the trace is printed, and on a fatal error (e.g. a throwing `__destruct`) before its message: output already echoed is never lost. Stderr is unbuffered. `Process\abort()` does not flush.
 - `Process\exit($code: int): never` unwinds, running `finally` blocks and destructors. It is not a throwable: no `catch` clause, including `catch (Throwable)`, intercepts it. `Process\abort()` terminates immediately.
 - If `exit` is reached while a `finally` block runs because of an earlier throwable or `exit`, the newest `exit` wins. What it replaces is reported on stderr, never dropped silently: a discarded throwable prints its trace marked "discarded by exit(n) at file:line"; a discarded exit code prints "exit(m) at file:line superseded by exit(n) at file:line".
 
@@ -57,7 +58,7 @@ Code follows PER Coding Style, enforced by the built-in formatter (`scb fmt`). D
 - No opening tag; no `declare(strict_types)`.
 - Types are postfix everywhere: `$name: string`, `const MAX: i64`, `catch ($e: IoException)`; return types `): T`.
 - Generics written `list<T>`, no inner spaces; function types written `fn(int): bool`.
-- Modifier order: visibility → `final` → `static` → `readonly` → `mutating`; `extendable` / `abstract` before `class`.
+- Modifier order: `abstract` / `final` → visibility → `static` → `readonly` → `mutating` (as in PER: `final public function`); `extendable` / `abstract` before `class`.
 
 | Element | Convention | Example |
 | --- | --- | --- |
@@ -97,7 +98,14 @@ true try unsafe use void while yield
 ```
 
 - Contextual keywords (ordinary identifiers elsewhere): `in`, `out`, `of`, `get`, `set`, `type`, `where`.
-- Prelude names are the built-in types (`int`, `string`, `list`, `map`, …), every class in the throwable hierarchy (`Throwable`, `Error`, `Exception`, `IndexError`, …) and `Ref`. Declaring a type with a prelude name is an error. Primitive type names (`int`, `i8`, `f64`, `string`, …) also cannot name a constant or function, so `(i8)` is always a cast.
+- The prelude holds exactly the names the compiler itself depends on:
+  - primitives: `bool`, `int`, `i8` `i16` `i32` `i64`, `u8` `u16` `u32` `u64`, `float`, `f32`, `f64`, `string`, `bytes`;
+  - collections: `list`, `map`, `set`, `tuple`;
+  - language types: `Range` (built by `..=` / `..<`), `Generator` (built by `yield`), `Iterable` (consumed by `foreach`);
+  - operator interfaces: `Stringable`, `Equatable`, `Comparable`, `Hashable`, `Callable`, `Sendable`;
+  - the throwable hierarchy (`Throwable`, `Error`, `Exception`, `IndexError`, …) and `Ref`.
+
+  `void`, `never` and `null` are keywords. Everything else in the stdlib lives in a namespace (`\Math\Rounding`, `\Str\Form`, `\Float\Key`, `\Time\Duration`, …). Declaring a type with a prelude name is an error. Primitive type names (`int`, `i8`, `f64`, `string`, …) also cannot name a constant or function, so `(i8)` is always a cast.
 - `extern` and `unsafe` are reserved for future FFI.
 - `_` is reserved: never an identifier; it is the wildcard in patterns and the discard in destructuring (`[$a, _] = $pair;`). `$_` is an ordinary variable.
 - Reserved words are allowed as names where the position is unambiguous: named-argument labels (`default:`), method and property names after `->`, `?->`, `::`, and class constant and enum case names. Never as function, class or type names.
@@ -109,7 +117,7 @@ Numeric literals:
 | Decimal / hex / octal / binary | `255`, `0xFF`, `0o377`, `0b1111` | No legacy `0377` octal |
 | Separators | `1_000_000` | `_` only between digits |
 | Float | `0.5`, `1.5e-3`, `1e10` | Leading digit required (no `.5`); no trailing dot (no `1.`) |
-| Suffixes | none | Contextual typing covers them |
+| Suffixes | none | Spelling sets the kind (`1` int, `1.0` float); the declared type sets the width (see Numerics) |
 | Special values | `f64::NAN`, `f64::INFINITY` | No global `NAN` / `INF` |
 
 String literals:
@@ -133,6 +141,8 @@ Octal escapes are dropped. Unknown escapes (`"\q"`) are a compile error.
 
 - **A literal's kind is fixed by its spelling.** `1` is an integer literal and `1.0` a float literal; neither ever becomes the other. `$f: f64 = 1;` is a compile error (write `1.0`), and so is `2.5 * 2`.
 - **Within its kind, a literal takes the width required where it appears** (declared type, parameter type, the other operand), range-checked at compile time: `$a: u8 = 200;` is fine; `$b: u8 = 300;` is a compile error; with `$x: i8`, `$x += 1` uses an `i8` `1`. Where nothing requires a width, integer literals are `i64` and float literals `f64`.
+- **Negative literals:** unary `-` applied directly to a numeric literal forms one negative literal, range-checked as such: `$x: i8 = -128;` is fine, `-129` is out of range. The lexer still emits `-` separately (`$a-1` is a subtraction), and precedence is unchanged (`-2 ** 2` is `-(2 ** 2)`).
+- **Unsigned negation:** unary `-` on an unsigned value that is not a literal is a compile error (`unsigned-negation`); write `0 - $u` (traps on underflow) or `u8::wrappingNeg($u)`.
 - **No implicit widening.** `i32 + i64` is a compile error; cast explicitly.
 - **Casts:** `(i8) $x` traps if the value is out of range. Wrapping and truncating conversions are explicit stdlib calls.
 - **Overflow traps** (`OverflowError`) in every build mode.
@@ -202,6 +212,7 @@ Shifts: an amount ≥ the bit width or negative traps; `wrappingShl` / `wrapping
 Interpolation:
 
 - `"$name"` and `"{$expr}"`; `{}` accepts any expression. Single quotes do not interpolate. Heredoc and nowdoc are kept.
+- The simple form is `$name` only. `$name` immediately followed by `->`, `?->` or `[` is a compile error (`ambiguous-interpolation`, fix-it: `{$name->prop}`); PHP's one-level `"$a->b"` / `"$a[0]"` forms are not supported, so nothing is silently printed literally. For a literal `->` after a variable write `{$name}->`.
 - Interpolated values must be `string`, an int, a float, or `Stringable`. Anything else, including `bool` and `?T`, is a compile error.
 
 ## Collections and values
@@ -230,6 +241,7 @@ Literal inference:
 Access:
 
 - `$list[10]` past the end traps (`IndexError`). `$map[$k]` on a missing key traps (`KeyError`).
+- Tuple elements: `$t[0]`, `$t[1]`, … with an integer literal index, typed per element (`$pair[0]: K` for `tuple<K, V>`). A non-literal or out-of-range index is a compile error (`tuple-index`). Writes follow Nested mutation: `$pair[1] = 5;`.
 - `$map->get($k)` returns `?V`. `$map[$k] ?? $default` desugars to `get()` and never traps.
 - Destructuring: `[$a, $b] = $tuple;` and `foreach ($pairs as [$k, $v])`. `foreach` over a map yields `$k => $v`.
 
@@ -264,6 +276,7 @@ A write through a value path happens in place: `$order->lines[2]->qty += 1;` wal
 | `L->prop`, `L` a writable struct | Yes, written through |
 | `expr->prop`, `expr` a class instance | Yes, even from a call (`getUser()->name = 'x'`) |
 | `L[$k]`, `L` a writable list or map | Yes |
+| `L[0]`, `L` a writable tuple (literal index) | Yes |
 | `L[] = $v` | Yes (push) |
 | `C::$prop`, a static property | Yes; exclusivity checked at runtime |
 | Value-typed call result (`getLines()[0]->qty = 1`) | Compile error: mutating a temporary |
@@ -313,15 +326,16 @@ $list->each(fn($x: int): void { $count->value++; });
 - Statically typed. Function signatures, properties and every local declaration require explicit types: `$count: int = 0;`. There is no local type inference for declarations.
 - Assigning to a variable that has not been declared is a compile error (fix-it: add the type). Reassignment needs no type: `$count = 5;`.
 - Bindings whose type comes from an already-typed source are not annotated: `foreach` variables, `match` and `instanceof` pattern bindings, destructuring, `catch` variables (which state their class) and closure parameters (typed in the signature).
+- Pattern bindings (destructuring, `foreach`, `match`, `instanceof`) always declare new variables. A binding whose name is already visible is a compile error (`redeclared-variable`); patterns never assign to existing variables. PHP's `[$a, $b] = [$b, $a]` swap is therefore an error; use a temporary, or `$list->swap()` for list elements.
 - **Nullability:** no implicit null. `?T` (sugar for `T|null`) must be explicit. Null-safe `?->` and `??`.
 - **Unions:** `int|string`, narrowed by `instanceof`, `match` or flow typing.
 - **Intersections:** `A&B`, interfaces only.
 - **`never`** for `exit`, throw-only functions and infinite loops. **`void`** for no return.
 - **Banned:** `mixed`, `callable`, `iterable`, `object`. Dynamic data uses tagged enums (e.g. `Json\Value`); callables use `fn(...)` types; iteration uses `Iterable<T>`.
 - **Conditions must be `bool`.** `if ($count)` and `!$list` are compile errors.
-- **Type test:** `$x instanceof Foo`. Null check: `$x == null`.
+- **Type test:** `$x instanceof Foo`. Null check: `$x == null`. When `$x` has a union type, `instanceof` accepts any member of the union, primitives included: `if ($x instanceof string)` narrows `int|string` to `string`.
 
-Flow typing narrows after `if ($x != null)`, `if ($x instanceof Foo)`, `match` arms, early `return` / `throw`, and `&&` chains. It applies to locals and `readonly` properties only; mutable properties can change between check and use.
+Flow typing narrows after `if ($x != null)`, `if ($x instanceof Foo)`, `match` arms, early `return` / `throw`, and `&&` chains. A `while` condition narrows inside the loop body the same way, and a condition on an assignment narrows the assigned variable: in `while (($line = \Io\readLine()) != null)`, `$line` is `string` in the body. It applies to locals and `readonly` properties only; mutable properties can change between check and use.
 
 Generics:
 
@@ -437,6 +451,13 @@ struct Point
 ```
 
 - Calling a `mutating` method on a `readonly` or `const` value is a compile error.
+- **Implicit constructor:** a class or struct that declares no `__construct` gets a no-argument constructor, valid only when every property has a default. A subclass without its own `__construct` inherits its parent's. There is no implicit memberwise constructor; use constructor promotion.
+- **Property initialization** is checked at compile time (`uninitialized-property`):
+  1. Every instance property without a default must be assigned on every path through the constructor. A class or struct with no `__construct` and such a property is an error at its declaration.
+  2. Until all properties are assigned, `$this` may only be used to assign properties: no method calls, no passing `$this`, no closures over it.
+  3. `?T` properties are not implicitly `null`; they need `= null` or an assignment.
+  4. When the parent declares a constructor, a subclass constructor must call `parent::__construct(...)` exactly once on every path, before any other use of `$this` (`missing-parent-constructor-call`).
+  5. Static properties always have an initializer (evaluated lazily; see Static initialization).
 - `abstract` classes are implicitly extendable. No separate record type.
 - Methods of an `extendable` or `abstract` class are overridable unless marked `final`. `final` is a method modifier only: on a class, a struct, an interface method, an `abstract` method, or a method of a non-extendable class it is a compile error (redundant or contradictory). Overriding a `final` method is a compile error.
 - Kept from PHP: interfaces, abstract classes, constructor promotion, property hooks, asymmetric visibility, statics, readonly classes.
@@ -482,7 +503,8 @@ enum Shape {                                             // data-carrying
 
 - Exhaustiveness is checked at compile time over enums, unions and `bool`. Anything not provably exhaustive needs `default`. No runtime `UnhandledMatchError`.
 - Patterns: destructuring of enum data, tuples and structs, with `if` guards. Integer range patterns: `90..=100`, `80..<90`.
-- Arms are expressions. Block arms `=> { … }` only when `match` is used as a statement.
+- A `match` that begins a statement is a statement, like `if` (it replaces `switch`): arms may be blocks `=> { … }` or expressions, any result is discarded, and no `;` follows the closing `}` (a `;` is tolerated; the formatter removes it). Anywhere else `match` is an expression: arms are expressions, and the enclosing statement ends with its own `;`.
+- Type of a `match` expression: all arms have the same type, or the expected type accepts every arm (`int|string`). `never` arms (`throw`, `exit(…)`) fit any type. Without an expected type, differing arm types are a compile error (`type-mismatch`).
 - `switch` is removed.
 
 ```php
@@ -496,6 +518,18 @@ $area: f64 = match ($shape) {
 Pattern meaning:
 
 - A bare `$var` in a pattern binds. Literals, constants and enum cases compare directly.
+- A typed binding `$v: T` tests that the value is a `T` and binds `$v` narrowed to `T`; `_: T` tests without binding. Typed bindings are not bare bindings (no guard needed) and work in any pattern position, including enum payloads and list patterns. For exhaustiveness, each member of a union (and `null` in `?T`) must be covered:
+
+```php
+$label: string = match ($opt) {      // ?int
+    null    => 'none',
+    $v: int => "value {$v}",
+};
+$size: int = match ($x) {            // int|string
+    $n: int    => $n,
+    $s: string => $s->byteLength(),
+};
+```
 - Comparison against any expression uses the `== expr` pattern.
 - A top-level bare binding with no guard is a compile error (fix-it: `== $var` or `default`). This catches PHP's `match ($x) { $limit => … }`, which compares.
 
@@ -560,11 +594,13 @@ Throwable
 ├── Error       programming faults: OverflowError, CastError, DivisionByZeroError,
 │               IndexError, KeyError, BoundaryError, AssertionError,
 │               ExclusivityError, StaticInitError
-└── Exception   expected failures: IoException, ParseException, …
+└── Exception   expected failures: IoException, ParseException, EncodingException, …
 ```
 
 - `Error`s are catchable, so servers and fiber schedulers can isolate a failure. Only out-of-memory and stack overflow abort.
 - Kept from PHP 8: `finally`, multi-catch `catch ($e: A | B)`, catch without a variable, `throw` as an expression, `previous` chaining.
+- `return`, `break` and `continue` written directly in a `finally` body, leaving it, are compile errors (`control-leaves-finally`). `break` / `continue` of a loop nested inside the `finally` body are fine. `exit(…)` and `throw` remain allowed.
+- Anything that still leaves a `finally` while a throwable is pending (a `throw`, an `exit`, or either reached through a call) wins, and the pending throwable is never dropped silently: its trace is printed to stderr marked "discarded by throw / exit(n) at file:line". A new throwable that has no `previous` also gets the discarded one as `previous`.
 - `assert()` is always on. `debugAssert()` is stripped from release builds.
 - An uncaught throwable in a fiber is rethrown to whoever awaits or joins it. If none, the scheduler logs it and exits non-zero.
 
@@ -575,7 +611,7 @@ Modules:
 - The namespace is the directory. File names are free; a file may hold any number of declarations.
 - Each file keeps a `namespace` line, which the compiler requires to match the directory.
 - Imports use PHP syntax: `use A\B;`, `use A\{B, C};`, `use function Str\normalize;`, `use const Math\PI;`, `use A\B as C;`.
-- No global fallback. Fully qualified names always work without `use`. A prelude auto-imports the built-in types, the throwable hierarchy and `Ref` only.
+- No global fallback. Fully qualified names always work without `use`. A prelude auto-imports the names listed under Lexical structure, and nothing else.
 - Name resolution follows PHP. A leading `\` makes a name fully qualified: `\Env\get()`. A qualified name without it is relative to the current namespace: inside `namespace App;`, `Env\get()` means `App\Env\get()`. Stdlib calls are therefore written `\Env\get()`, `\Io\readLine()`, or imported with `use`. Names in `use` declarations are always fully qualified and take no leading `\`.
 - Prose in this spec names stdlib items without the leading `\` (`Env\get()`); code examples include it.
 - Stdlib root namespaces (`Io`, `Env`, `Math`, `Str`, `Process`, `Test`, `Task`, …: every top-level namespace the stdlib defines) are reserved. A user file declaring one, or a namespace under one (`namespace Math\Extra;`), is a compile error. The package registry rejects vendor names that map onto a stdlib root.
@@ -764,9 +800,11 @@ Conventions:
 
 `Range<T>`: `contains($v)`, `count()`, `toList()`, `reversed()`, `step($n)`.
 
-`Io`: `Io\print($s: string)` (string only; `echo` / `print` add the `(string)`), `Io\eprint($s)`, `Io\readLine(): ?string`. Formatting (`printf`-style) is deferred; interpolation covers the POC.
+`Io`: `Io\print($s: string)` (string only; `echo` / `print` add the `(string)`), `Io\eprint($s)`, `Io\readLine(): ?string`. `readLine()` returns the line without its terminator (`\n` or `\r\n`; a lone `\r` is kept), `null` at end of input, and a final unterminated line as-is. Formatting (`printf`-style) is deferred; interpolation covers the POC.
 
-Request I/O (POC): `Env\get($name): ?string` and `Io\readAll(): bytes`. With `echo`, these form a CGI-style request contract, so the same handler runs unchanged under CGI and FastCGI.
+Request I/O (POC): `Env\get($name): ?string` and `Io\readAll(): bytes`.
+
+Text from the OS must be valid UTF-8 to become a `string`. `Io\readLine()` and `Env\get()` throw `EncodingException` on invalid input; invalid command-line arguments are reported before `main` runs, like an uncaught `EncodingException` (trace naming the argument, exit 1). Raw data stays available as `bytes` through `Io\readAll()`. With `echo`, these form a CGI-style request contract, so the same handler runs unchanged under CGI and FastCGI.
 
 ## Grammar sketch
 
@@ -810,7 +848,7 @@ Property      = Visibility [ SetVis ] [ "static" ] [ "readonly" ] Variable ":" T
                 [ "=" Expr ] ( ";" | Hooks ) ;
 Hooks         = "{" { ( "get" | "set" [ "(" Variable ":" Type ")" ] ) ( "=>" Expr ";" | Block ) } "}" ;
 ClassConst    = Visibility "const" Ident ":" Type "=" Expr ";" ;
-Method        = [ "abstract" ] Visibility [ "final" ] [ "static" ] [ "mutating" ]
+Method        = [ "abstract" | "final" ] Visibility [ "static" ] [ "mutating" ]
                 "function" Ident [ TypeParams ] "(" [ Params ] ")" [ ":" Type ]
                 [ "where" Ident "of" Type { "," Ident "of" Type } ]
                 ( Block | ";" ) ;
@@ -826,7 +864,7 @@ FnType        = "fn" "(" [ [ "inout" ] Type { "," [ "inout" ] Type } ] ")" ":" T
 
 (* ---------- Statements ---------- *)
 Block         = "{" { Statement } "}" ;
-Statement     = Block | LocalDecl | If | While | DoWhile | For | Foreach | Try
+Statement     = Block | LocalDecl | If | While | DoWhile | For | Foreach | Try | MatchStmt
               | "echo" Expr { "," Expr } ";" | "print" Expr ";"
               | ( "exit" | "die" ) ";"   (* bare form: statement only; exit(…) is an expression *)
               | "return" [ Expr ] ";" | "break" [ IntLit ] ";" | "continue" [ IntLit ] ";"
@@ -842,6 +880,7 @@ ForInit       = Variable ":" Type "=" Expr | ExprList ;   (* a typed declaration
 ExprList      = Expr { "," Expr } ;
 Foreach       = "foreach" "(" Expr "as" ( Variable [ "=>" Variable ] | ListPattern | StructPattern ) ")" Block ;
 Try           = "try" Block { Catch } [ "finally" Block ] ;
+MatchStmt     = Match [ ";" ] ;   (* match at statement start; arms may be blocks *)
 Catch         = "catch" "(" ( Variable ":" CatchTypes | CatchTypes ) ")" Block ;
 CatchTypes    = NamedType { "|" NamedType } ;
 
@@ -849,7 +888,7 @@ CatchTypes    = NamedType { "|" NamedType } ;
 Primary       = Literal | Variable | QualifiedName | "(" Expr ")" | ListLit | MapLit
               | "self" | "static" | "parent" | "parent" "(" NamedType ")"
               | "clone" Unary | "clone" Args
-              | "new" NamedType Args | Closure | Match ;
+              | "new" NamedType Args | Closure | Match | Exit ;
 Postfix       = Primary { "->" Name | "?->" Name | "::" Name | "::" Variable | "[" Expr "]"
               | "::<" TypeList ">" | Args } ;
 Args          = "(" [ Arg { "," Arg } [ "," ] ] ")" ;
@@ -859,17 +898,18 @@ Closure       = "fn" "(" [ Params ] ")" ":" Type ( "=>" Expr | Block ) ;
 ListLit       = "[" [ Expr { "," Expr } [ "," ] ] "]" ;
 MapLit        = "[" Expr "=>" Expr { "," Expr "=>" Expr } [ "," ] "]" ;
 Unary         = ( "-" | "+" | "~" | "!" | "++" | "--" ) Unary | Cast | Postfix [ "++" | "--" ] ;
-Cast          = "(" PrimitiveType ")" Unary ;   (* any other parenthesized form is an expression *)
+Cast          = "(" PrimitiveType ")" Unary ;   (* any other parenthesized form is an expression; "(bool)" before an operand is diagnosed as bool-cast *)
 PrimitiveType = "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "u64"
               | "f32" | "f64" | "int" | "float" | "string" ;
 Range         = Expr ( "..=" | "..<" ) Expr ;
 InstanceOf    = Expr "instanceof" ( NamedType | Pattern ) ;
-Exit          = ( "exit" | "die" ) "(" [ Expr ] ")" ;   (* type never; precedence level 21 *)
+Exit          = ( "exit" | "die" ) "(" [ Expr ] ")" ;   (* type never; call-like primary *)
 Ternary       = Expr "?" Expr ":" Expr ;   (* condition must be bool; no unparenthesized nesting *)
 
 Match         = "match" [ "(" Expr ")" ] "{" Arm { "," Arm } [ "," ] "}" ;   (* subjectless: arms are bool conditions *)
 Arm           = ( Pattern { "," Pattern } | "default" ) [ "if" Expr ] "=>" ( Expr | Block ) ;
-Pattern       = Literal | Variable | "_" | "==" Expr | IntLit ( "..=" | "..<" ) IntLit
+Pattern       = [ "-" ] NumLit | Literal | Variable | "_" | ( Variable | "_" ) ":" Type   (* typed binding / type test *)
+              | "==" Expr | [ "-" ] IntLit ( "..=" | "..<" ) [ "-" ] IntLit
               | QualifiedName [ "(" Pattern { "," Pattern } ")" ]      (* enum case *)
               | StructPattern
               | ListPattern ;
@@ -877,6 +917,7 @@ ListPattern   = "[" Pattern { "," Pattern } "]" ;
 StructPattern = NamedType "{" Ident ":" Pattern { "," Ident ":" Pattern } "}" ;
 
 Literal       = IntLit | FloatLit | StringLit | "true" | "false" | "null" ;
+NumLit        = IntLit | FloatLit ;
 IntLit        = Decimal | "0x" Hex | "0o" Octal | "0b" Binary ;   (* "_" separators; no legacy 0123 octal *)
 ```
 
@@ -905,7 +946,7 @@ Operator precedence, highest first:
 | 18 | `??` | right |
 | 19 | `? :` (nesting needs parentheses) | none |
 | 20 | `=` and compound assignments (`~/=` included) | right |
-| 21 | `yield`, `throw`, `exit(…)` / `die(…)` | right |
+| 21 | `yield`, `throw` | right |
 
 Notes:
 
@@ -979,8 +1020,17 @@ Also removed:
 
 POC scope:
 
-- **In:** primitives, `string`, `list<T>`, `map<K, V>`, `?T`; functions and `fn` closures; structs with `mutating` and copy-on-write; simple classes; interfaces; pure and data-carrying enums; `match` with patterns; exceptions and traps; `main`; single-directory modules; `Env\get()` and `Io\readAll()`; a CGI smoke test behind NGINX via `fcgiwrap`.
-- **Out:** user-defined generics (built-in collections only), fibers, templates, package manager, formatter, reflection, attributes, JIT, AOT.
+- **In:**
+  - Types: primitives, `string`, `bytes` (minimal; see open questions), `list<T>`, `map<K, V>`, `set<T>`, `tuple<…>`, `Range<T>`; `?T` and general unions with flow typing.
+  - Functions: named arguments, defaults, variadics and spread; `fn` closures; first-class callables (`foo(...)`, `$obj->m(...)`).
+  - Structs with `mutating`, copy-on-write, nested mutation, `inout`.
+  - Classes: single inheritance, `extendable`, `abstract`, `final` methods, constructor promotion, `readonly` (locals, properties, `readonly class`), static properties with lazy initialization and poisoning, runtime exclusivity checks, `clone` and clone-with, `__destruct`, cycle collector. `self::` and `parent::`.
+  - Interfaces with default methods; user `Equatable`, `Comparable`, `Stringable`.
+  - Pure, backed and data-carrying enums; `match` with patterns, guards, ranges and subjectless form; `instanceof` patterns; destructuring.
+  - Exceptions and traps, `finally`, `exit` / `die`, `Process\exit`, `Process\abort`, `Process\name`, `assert`.
+  - `const` (local, namespace, class); `internal` visibility (same as `public` within one module); magic constants; heredoc and nowdoc.
+  - `main`; single-file and directory mode; `Env\get()` and `Io\readAll()`; a CGI smoke test behind NGINX via `fcgiwrap`.
+- **Out** (rejected with a `not-supported-in-poc` diagnostic where the syntax is recognized): user-defined generics, type aliases, intersection types; generators and `yield`; `|>` pipe and `?` partial application; property hooks and asymmetric visibility; late static binding (`static::`, `new static`, `static` return type); the `Callable` interface; fibers, tasks, channels, threads; templates; package manager and manifest; formatter; reflection; attributes; JIT; AOT.
 
 The POC must prove the hard combination: static types with value semantics, copy-on-write and refcounting.
 

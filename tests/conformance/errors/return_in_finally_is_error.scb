@@ -1,0 +1,16 @@
+// EXPECT-COMPILE-ERROR: control-leaves-finally
+
+namespace Conformance;
+
+function load(): int
+{
+    try {
+        throw new Exception('disk');
+    } finally {
+        return 0;
+    }
+}
+
+function main(): void
+{
+}

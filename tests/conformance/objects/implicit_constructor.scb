@@ -1,0 +1,31 @@
+// EXPECT-STDOUT:
+// | 0 0 base 5
+
+namespace Conformance;
+
+struct Origin
+{
+    public $x: int = 0;
+    public $y: int = 0;
+}
+
+extendable class Base
+{
+    public function __construct(public $n: int) {}
+
+    public function label(): string
+    {
+        return 'base';
+    }
+}
+
+class Child extends Base
+{
+}
+
+function main(): void
+{
+    $o: Origin = new Origin();
+    $c: Child = new Child(5);
+    echo $o->x, " ", $o->y, " ", $c->label(), " ", $c->n, "\n";
+}

@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+class User
+{
+    public $name: string {
+        get => "x";
+    }
+}
+
+function main(): void
+{
+}

@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+type Names = list<string>;
+
+function main(): void
+{
+}

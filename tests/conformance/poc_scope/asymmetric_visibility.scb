@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+class User
+{
+    public private(set) $name: string = "x";
+}
+
+function main(): void
+{
+}

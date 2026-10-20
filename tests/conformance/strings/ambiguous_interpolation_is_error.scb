@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: ambiguous-interpolation
+
+namespace Conformance;
+
+class User
+{
+    public function __construct(public $name: string) {}
+}
+
+function main(): void
+{
+    $user: User = new User('Ken');
+    echo "Hi $user->name\n";
+}

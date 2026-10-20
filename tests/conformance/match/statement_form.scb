@@ -1,0 +1,31 @@
+// EXPECT-STDOUT:
+// | started
+// | pong
+// | Stopping
+
+namespace Conformance;
+
+function main(): void
+{
+    $cmd: string = 'start';
+    match ($cmd) {
+        'start' => {
+            echo "started\n";
+        },
+        default => { echo "unknown\n"; },
+    }
+
+    $cmd = 'ping';
+    match ($cmd) {
+        'ping'  => { echo "pong\n"; },
+        default => { },
+    };
+
+    $cmd = 'stop';
+    $label: string = match ($cmd) {
+        'start' => 'Starting',
+        'stop'  => 'Stopping',
+        default => 'Unknown',
+    };
+    echo $label, "\n";
+}

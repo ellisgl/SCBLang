@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+class Doubler implements Callable
+{
+}
+
+function main(): void
+{
+}

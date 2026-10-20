@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: redeclared-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: int = 1;
+    $b: int = 2;
+    $pair: tuple<int, int> = [$b, $a];
+    [$a, $b] = $pair;
+}

@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: unsigned-negation
+
+namespace Conformance;
+
+function main(): void
+{
+    $u: u8 = 5;
+    $v: u8 = -$u;
+}

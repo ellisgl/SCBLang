@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+function first<T>($items: list<T>): ?T
+{
+    return $items->first();
+}
+
+function main(): void
+{
+}

@@ -1,0 +1,19 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+interface A
+{
+}
+
+interface B
+{
+}
+
+function take($x: A&B): void
+{
+}
+
+function main(): void
+{
+}

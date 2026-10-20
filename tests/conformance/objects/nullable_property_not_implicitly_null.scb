@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: uninitialized-property
+
+namespace Conformance;
+
+class User
+{
+    public $email: ?string;
+}
+
+function main(): void
+{
+}

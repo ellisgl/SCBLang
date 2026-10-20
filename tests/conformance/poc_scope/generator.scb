@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+function count(): Generator<int, void, void>
+{
+    yield 1;
+}
+
+function main(): void
+{
+}

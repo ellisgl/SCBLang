@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+function join($a: string, $b: string): string
+{
+    return $a . $b;
+}
+
+function main(): void
+{
+    $f: fn(string): string = join(?, "x");
+}

@@ -1,0 +1,20 @@
+// EXPECT-STDOUT:
+// | hi Ken
+
+namespace Conformance;
+
+class Name implements Stringable
+{
+    public function __construct(private $value: string) {}
+
+    public function toString(): string
+    {
+        return $this->value;
+    }
+}
+
+function main(): void
+{
+    $n: Name = new Name('Ken');
+    echo "hi {$n}\n";
+}

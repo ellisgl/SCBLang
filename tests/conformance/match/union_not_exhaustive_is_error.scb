@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: non-exhaustive-match
+
+namespace Conformance;
+
+function size($x: int|string): int
+{
+    return match ($x) {
+        $n: int => $n,
+    };
+}
+
+function main(): void
+{
+}

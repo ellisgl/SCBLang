@@ -1,0 +1,19 @@
+// EXPECT-STDOUT:
+// | none
+// | value 3
+
+namespace Conformance;
+
+function describe($opt: ?int): string
+{
+    return match ($opt) {
+        null    => 'none',
+        $v: int => "value {$v}",
+    };
+}
+
+function main(): void
+{
+    echo describe(null), "\n";
+    echo describe(3), "\n";
+}

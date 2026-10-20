@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: redeclared-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: int = 0;
+    $list: list<int> = [1, 2];
+    foreach ($list as $x) {
+    }
+}

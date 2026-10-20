@@ -1,0 +1,31 @@
+// EXPECT-STDOUT:
+// | 7 KEN none
+
+namespace Conformance;
+
+extendable class Base
+{
+    public function __construct(public $id: int) {}
+}
+
+class User extends Base
+{
+    public $name: string;
+    public $email: ?string = null;
+
+    public function __construct($id: int, $raw: string)
+    {
+        parent::__construct($id);
+        if ($raw == '') {
+            $this->name = 'anon';
+        } else {
+            $this->name = $raw->toUpper();
+        }
+    }
+}
+
+function main(): void
+{
+    $u: User = new User(7, 'ken');
+    echo $u->id, " ", $u->name, " ", $u->email ?? 'none', "\n";
+}

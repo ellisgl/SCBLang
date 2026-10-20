@@ -1,0 +1,19 @@
+// EXPECT-COMPILE-ERROR: missing-parent-constructor-call
+
+namespace Conformance;
+
+extendable class Base
+{
+    public function __construct(public $id: int) {}
+}
+
+class Child extends Base
+{
+    public function __construct()
+    {
+    }
+}
+
+function main(): void
+{
+}

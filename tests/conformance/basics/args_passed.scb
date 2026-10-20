@@ -1,0 +1,11 @@
+// ARG: one
+// ARG: two words
+// EXPECT-STDOUT:
+// | 2: one / two words
+
+namespace Conformance;
+
+function main($args: list<string>): void
+{
+    echo $args->count(), ": ", $args->join(' / '), "\n";
+}

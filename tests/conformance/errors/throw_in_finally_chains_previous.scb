@@ -1,0 +1,26 @@
+// EXPECT-STDOUT:
+// | caught second, previous set
+// EXPECT-STDERR-CONTAINS: discarded by throw
+// SPEC-OPEN: Q9
+
+namespace Conformance;
+
+function work(): void
+{
+    try {
+        throw new Exception('first');
+    } finally {
+        throw new Exception('second');
+    }
+}
+
+function main(): void
+{
+    try {
+        work();
+    } catch ($e: Exception) {
+        if ($e->getPrevious() != null) {
+            echo "caught ", $e->getMessage(), ", previous set\n";
+        }
+    }
+}

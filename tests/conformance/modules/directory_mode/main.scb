@@ -1,0 +1,9 @@
+// EXPECT-STDOUT:
+// | hello from helper
+
+namespace Conformance;
+
+function main(): void
+{
+    echo greeting(), "\n";
+}

@@ -1,0 +1,20 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+extendable class Base
+{
+    public static function make(): string
+    {
+        return static::label();
+    }
+
+    public static function label(): string
+    {
+        return "base";
+    }
+}
+
+function main(): void
+{
+}

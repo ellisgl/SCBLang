@@ -1,0 +1,19 @@
+// EXPECT-STDOUT:
+// | 1 one
+// | a=1 b=2
+
+namespace Conformance;
+
+function main(): void
+{
+    $pair: tuple<int, string> = [1, 'one'];
+    [$n, $word] = $pair;
+    echo $n, " ", $word, "\n";
+
+    $m: map<string, int> = ['a' => 1, 'b' => 2];
+    $parts: list<string> = [];
+    foreach ($m as $k => $v) {
+        $parts->push("{$k}={$v}");
+    }
+    echo $parts->join(' '), "\n";
+}

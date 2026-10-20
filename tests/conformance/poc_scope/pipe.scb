@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+function twice($s: string): string
+{
+    return $s . $s;
+}
+
+function main(): void
+{
+    $s: string = "a" |> twice(...);
+}
