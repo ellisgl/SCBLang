@@ -1,0 +1,27 @@
+// EXPECT-STDOUT:
+// | page not found 404 Conformance\NotFound
+// | wrapped: disk
+// | 23
+
+namespace Conformance;
+
+class NotFound extends Exception
+{
+    public function __construct($what: string)
+    {
+        parent::__construct("{$what} not found", 404);
+    }
+}
+
+function main(): void
+{
+    try {
+        throw new NotFound('page');
+    } catch ($e: NotFound) {
+        echo $e->getMessage(), " ", $e->getCode(), " ", NotFound::class, "\n";
+    }
+    $inner: Exception = new Exception('disk');
+    $outer: Exception = new Exception('wrapped', 0, $inner);
+    echo $outer->getMessage(), ": ", $outer->getPrevious()?->getMessage() ?? '-', "\n";
+    echo $inner->getLine(), "\n";
+}

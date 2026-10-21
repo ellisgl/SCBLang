@@ -9,7 +9,6 @@ function main(): int
     $method: string = \Env\get('REQUEST_METHOD') ?? 'GET';
     $query: string = \Env\get('QUERY_STRING') ?? '';
 
-    // SPEC-OPEN: Q1 — bytes API; provisional count() and Str\fromUtf8().
     $body: bytes = \Io\readAll();
 
     echo "Content-Type: text/plain; charset=utf-8\r\n";

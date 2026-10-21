@@ -1,0 +1,13 @@
+// EXPECT-STDOUT:
+// | 8 16 -4 127
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: u8 = 1;
+    $n: int = 4;
+    $s: i8 = -8;
+    $u: u8 = 254;
+    echo $x << 3, " ", $x << (u32) $n, " ", $s >> 1, " ", $u >> 1, "\n";
+}

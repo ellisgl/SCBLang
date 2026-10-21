@@ -1,0 +1,19 @@
+// EXPECT-STDOUT:
+// | 0 0 0
+// | 5 4 3
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = -1;
+    $runs: int = 0;
+    foreach (0..=$n as $i) {
+        $runs++;
+    }
+    $list: list<int> = [1, 2, 3, 4];
+    echo $runs, " ", (5..=1)->count(), " ", $list->slice(3..<1)->count(), "\n";
+    foreach ((3..=5)->reversed() as $v) {
+        echo $v, $v > 3 ? ' ' : "\n";
+    }
+}

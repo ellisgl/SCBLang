@@ -1,0 +1,11 @@
+// EXPECT-STDOUT:
+// | 1024 1 125 1.4142135623730951
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 3;
+    $b: i32 = 5;
+    echo 2 ** 10, " ", 0 ** 0, " ", $b ** (u32) $n, " ", 2.0 ** 0.5, "\n";
+}

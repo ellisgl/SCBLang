@@ -1,0 +1,21 @@
+// EXPECT-COMPILE-ERROR: non-exhaustive-match
+
+namespace Conformance;
+
+enum Size
+{
+    case SMALL;
+    case LARGE;
+}
+
+function label($s: Size, $loud: bool): string
+{
+    return match ($s) {
+        Size::SMALL           => 'small',
+        Size::LARGE if $loud  => 'LARGE',
+    };
+}
+
+function main(): void
+{
+}

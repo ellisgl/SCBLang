@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: undeclared-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    if (true) {
+        $msg: string = 'yes';
+    }
+    echo $msg, "\n";
+}

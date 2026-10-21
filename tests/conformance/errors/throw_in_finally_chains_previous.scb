@@ -1,7 +1,6 @@
 // EXPECT-STDOUT:
 // | caught second, previous set
 // EXPECT-STDERR-CONTAINS: discarded by throw
-// SPEC-OPEN: Q9
 
 namespace Conformance;
 

@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | 0.30000000000000004
+// | 3.0 -0.0 1.5 1.1
+// | 1.0e21 1.5e-7 0.000001 123456789.0
+// | NAN INF -INF
+
+namespace Conformance;
+
+function main(): void
+{
+    echo 0.1 + 0.2, "\n";
+    $f: f32 = 1.5;
+    $g: f32 = 1.1;
+    echo 3.0, " ", -0.0, " ", $f, " ", $g, "\n";
+    echo 1e21, " ", 1.5e-7, " ", 1e-6, " ", 123456789.0, "\n";
+    echo f64::NAN, " ", f64::INFINITY, " ", -f64::INFINITY, "\n";
+}

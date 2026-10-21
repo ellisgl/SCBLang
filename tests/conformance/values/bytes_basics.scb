@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | 3 104 7 hey
+// | 2 bad utf-8
+
+namespace Conformance;
+
+function main(): void
+{
+    $b: bytes = "hi!"->bytes();
+    $copy: bytes = $b;
+    $b[2] = 0x79;
+    $b = b"he"->concat($b->slice(2..<3));
+    echo $copy->count(), " ", $copy[0], " ", $b->concat(b"!!!!")->count(), " ", $b->decodeUtf8(), "\n";
+
+    $raw: bytes = b"\xFF\xFE";
+    echo $raw->count(), " ", $raw->tryDecodeUtf8() ?? 'bad utf-8', "\n";
+}

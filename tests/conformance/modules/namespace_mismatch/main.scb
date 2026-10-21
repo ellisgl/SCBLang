@@ -1,0 +1,7 @@
+// EXPECT-COMPILE-ERROR: namespace-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+}

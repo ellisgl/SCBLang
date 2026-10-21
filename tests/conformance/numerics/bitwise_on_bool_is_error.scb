@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: bitwise-on-bool
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: bool = true;
+    $b: bool = false;
+    $c: bool = $a & $b;
+}

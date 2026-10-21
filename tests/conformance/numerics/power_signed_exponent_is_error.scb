@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 3;
+    $r: int = 2 ** $n;
+}

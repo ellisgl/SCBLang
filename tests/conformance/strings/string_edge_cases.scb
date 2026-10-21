@@ -1,0 +1,22 @@
+// EXPECT-STDOUT:
+// | [..é] [é-+-]
+// | 2 b,c
+// | [x]
+// | [] 1
+// | caught ValueError
+
+namespace Conformance;
+
+function main(): void
+{
+    echo '[', 'é'->padStart(3, '.'), '] [', 'é'->padEnd(4, '-+'), "]\n";
+    $parts: list<string> = 'a,b,c'->split(',', 2);
+    echo $parts->count(), ' ', $parts[1], "\n";
+    echo '[', "\u{00A0} x \n"->trim(), "]\n";
+    echo '[', 'ab'->repeat(0), '] ', 'abc'->find('', 1) ?? -1, "\n";
+    try {
+        $bad: list<string> = 'abc'->split('');
+    } catch (ValueError) {
+        echo "caught ValueError\n";
+    }
+}

@@ -28,7 +28,7 @@ function main($args: list<string>): int
 ```
 
 - `$args` holds user arguments only; the program name comes from `Process\name()`.
-- Environment and stdin come from the stdlib: `Env\get()`, `Io\stdin()`.
+- Environment and stdin come from the stdlib: `Env\get()`, `Io\readLine()`, `Io\readAll()`. A reader/stream API (`Io\Reader`, alongside `Io\Writer`) is post-POC.
 - `main` runs inside the root fiber, so I/O can suspend without setup.
 - A `void` return exits 0. A returned `int` outside 0–255 raises an `Error` on POSIX.
 - An uncaught throwable prints a stack trace to stderr and exits 1.
@@ -42,7 +42,7 @@ Keywords that desugar to stdlib calls (there is no global function fallback, so 
 
 | Keyword | Desugars to | Rules |
 | --- | --- | --- |
-| `echo $a, $b;` | `\Io\print((string) $a); \Io\print((string) $b);` | Statement only; each operand must be a `string` or a type `(string)` accepts (int, float, `Stringable`). No conversion happens for a `string` |
+| `echo $a, $b;` | `\Io\print((string) $a); \Io\print((string) $b);` | Statement only; each operand must be `Stringable` (see Strings → Interpolation). No conversion happens for a `string` |
 | `print $a;` | `\Io\print((string) $a);` | Statement only; no return value; operand rule as `echo` |
 | `exit;` / `exit($code);` | `\Process\exit($code)` | `int` only, default 0; type `never`. A string argument is a compile error. `exit(…)` is also an expression (like `throw`): `\Env\get('PORT') ?? exit(2)`. The bare `exit` without parentheses is statement-only |
 | `die` | Same as `exit` | Same as `exit` |
@@ -102,10 +102,10 @@ true try unsafe use void while yield
   - primitives: `bool`, `int`, `i8` `i16` `i32` `i64`, `u8` `u16` `u32` `u64`, `float`, `f32`, `f64`, `string`, `bytes`;
   - collections: `list`, `map`, `set`, `tuple`;
   - language types: `Range` (built by `..=` / `..<`), `Generator` (built by `yield`), `Iterable` (consumed by `foreach`);
-  - operator interfaces: `Stringable`, `Equatable`, `Comparable`, `Hashable`, `Callable`, `Sendable`;
+  - operator interfaces: `Stringable`, `Equatable`, `Comparable`, `Hashable`, `Callable`, `Sendable`. `string`, every integer type and both float types implement `Stringable`; `bool` does not;
   - the throwable hierarchy (`Throwable`, `Error`, `Exception`, `IndexError`, …) and `Ref`.
 
-  `void`, `never` and `null` are keywords. Everything else in the stdlib lives in a namespace (`\Math\Rounding`, `\Str\Form`, `\Float\Key`, `\Time\Duration`, …). Declaring a type with a prelude name is an error. Primitive type names (`int`, `i8`, `f64`, `string`, …) also cannot name a constant or function, so `(i8)` is always a cast.
+  `void`, `never` and `null` are keywords. Everything else in the stdlib lives in a namespace (`\Math\Rounding`, `\Str\Form`, `\Float\Key`, `\Time\Duration`, …). No prelude name may be declared as a type, function or constant (`prelude-name-redeclared`); in particular `(i8)` is always a cast. This applies to template functions too: `List.scbt` must be renamed (e.g. `UserList.scbt`).
 - `extern` and `unsafe` are reserved for future FFI.
 - `_` is reserved: never an identifier; it is the wildcard in patterns and the discard in destructuring (`[$a, _] = $pair;`). `$_` is an ordinary variable.
 - Reserved words are allowed as names where the position is unambiguous: named-argument labels (`default:`), method and property names after `->`, `?->`, `::`, and class constant and enum case names. Never as function, class or type names.
@@ -156,6 +156,7 @@ Division and remainder:
 | `~/` | same-typed ints | int | Truncates toward zero; `~/=` compound form |
 | `%` | same-typed ints or floats | same type | Sign follows the dividend; floats behave as fmod |
 
+- Exponent `**`: for an integer base of type `T`, the exponent is `u32` and the result is `T` (literal exponents adapt: `$x ** 2`; a variable needs `(u32) $n`, which traps `CastError` if negative). Overflow traps (`OverflowError`); `0 ** 0` is 1. For floats both operands are the same float type, with IEEE `pow` semantics.
 - `MIN ~/ -1` traps (overflow).
 - Integer divide by zero traps (`DivisionByZeroError`); floats follow IEEE (inf / NaN).
 - Helpers: `Math\floorDiv($a, $b)`, `Math\mod($a, $b)` (non-negative for a positive divisor).
@@ -175,10 +176,12 @@ Primitive types carry static methods for conversions and checked arithmetic, e.g
 | Int → float | `(f64) $i` | Rounds to nearest (lossy above 2^53) |
 | | `f64::exactFrom($i)` | Returns `?f64` |
 | Float → narrower float | `(f32) $d` | Rounds to nearest; overflow becomes ±inf |
-| Value → string | `(string) $x` | Ints, floats, `Stringable` only |
+| Value → string | `(string) $x` | `Stringable` only (includes `string`, ints, floats, and unions whose members all are) |
 | String → number | `int::parse($s)` | Throws `ParseException` |
 | | `int::tryParse($s)` | Returns `?int` |
 | Any → bool | `(bool)` | Banned; write `$x != 0` |
+
+Float to string (`(string)`, `echo`, interpolation): the shortest digits that round-trip to the same value of that type (`f32` uses `f32` precision). Integral values keep `.0` (`3.0`, `-0.0`). Plain decimal when `1e-6 ≤ |x| < 1e21`, otherwise exponent form with the same mantissa rule and no `+` or leading zeros (`1.0e21`, `1.5e-7`). `NAN`, `INF`, `-INF`. Rounded display is an explicit formatting call (post-POC).
 
 Casts exist only for the primitive types in this table. `(Name) expr` with any other name is not a cast: it parses as a parenthesized expression, so `(MAX) - 1` is a subtraction. Conversions involving classes, structs and enums use methods (`Status::from()`) or `instanceof` narrowing.
 
@@ -190,7 +193,9 @@ i32::saturatingAdd($a, $b)  // clamps
 i32::checkedAdd($a, $b)     // ?i32
 ```
 
-Shifts: an amount ≥ the bit width or negative traps; `wrappingShl` / `wrappingShr` mask it. `>>` is arithmetic for signed types, logical for unsigned.
+Bitwise `&`, `|`, `^`, `~` take same-typed integers only. On `bool` they are a compile error (`bitwise-on-bool`; fix-its `&&`, `||`, and `!=` for XOR).
+
+Shifts: the amount is always `u32` (literal amounts adapt; a variable needs `(u32) $n`, which traps `CastError` if negative). An amount ≥ the bit width traps (`OverflowError`); `wrappingShl` / `wrappingShr` mask it. `>>` is arithmetic for signed types, logical for unsigned.
 
 ## Strings
 
@@ -200,7 +205,7 @@ Shifts: an amount ≥ the bit width or negative traps; `wrappingShl` / `wrapping
 
 | View | Element | Indexing | Length |
 | --- | --- | --- | --- |
-| `$s->bytes()` | `u8` | O(1) | `byteLength()` |
+| `$s->bytes()` (returns `bytes`) | `u8` | O(1) | `byteLength()` |
 | `$s->codepoints()` | `u32` | iterate | `codepointLength()` |
 | `$s->graphemes()` | `string` | iterate | `graphemeLength()` |
 
@@ -213,7 +218,7 @@ Interpolation:
 
 - `"$name"` and `"{$expr}"`; `{}` accepts any expression. Single quotes do not interpolate. Heredoc and nowdoc are kept.
 - The simple form is `$name` only. `$name` immediately followed by `->`, `?->` or `[` is a compile error (`ambiguous-interpolation`, fix-it: `{$name->prop}`); PHP's one-level `"$a->b"` / `"$a[0]"` forms are not supported, so nothing is silently printed literally. For a literal `->` after a variable write `{$name}->`.
-- Interpolated values must be `string`, an int, a float, or `Stringable`. Anything else, including `bool` and `?T`, is a compile error.
+- Interpolated values, `echo` / `print` operands and `(string)` operands must be `Stringable`: `string`, ints and floats (Q4 format) are; a union is when every member is (`int|string` prints whichever value it holds). Anything else, including `bool` and `?T` (`null` is not `Stringable`), is a compile error. `bool` has no string conversion at all (not via `echo`, interpolation or `(string)`); the diagnostic's fix-it is `$b ? 'true' : 'false'`.
 
 ## Collections and values
 
@@ -243,7 +248,7 @@ Access:
 - `$list[10]` past the end traps (`IndexError`). `$map[$k]` on a missing key traps (`KeyError`).
 - Tuple elements: `$t[0]`, `$t[1]`, … with an integer literal index, typed per element (`$pair[0]: K` for `tuple<K, V>`). A non-literal or out-of-range index is a compile error (`tuple-index`). Writes follow Nested mutation: `$pair[1] = 5;`.
 - `$map->get($k)` returns `?V`. `$map[$k] ?? $default` desugars to `get()` and never traps.
-- Destructuring: `[$a, $b] = $tuple;` and `foreach ($pairs as [$k, $v])`. `foreach` over a map yields `$k => $v`.
+- Destructuring: `[$a, $b] = $tuple;` and `foreach ($pairs as [$k, $v])`. `foreach` over a map yields `$k => $v`; over a list, `$i => $v` gives the position `$i: int` (0 to `count() - 1`).
 
 Value semantics:
 
@@ -325,6 +330,7 @@ $list->each(fn($x: int): void { $count->value++; });
 
 - Statically typed. Function signatures, properties and every local declaration require explicit types: `$count: int = 0;`. There is no local type inference for declarations.
 - Assigning to a variable that has not been declared is a compile error (fix-it: add the type). Reassignment needs no type: `$count = 5;`.
+- **Scope:** a declaration is visible from its point to the end of its enclosing block (`undeclared-variable` after that). Declaring a name that is still visible is an error (`redeclared-variable`): no shadowing, including closure parameters and pattern bindings. Sibling blocks may each declare the same name. `for`-init, `foreach` and pattern bindings are scoped to their loop body or arm. A local's destructor runs when its block ends.
 - Bindings whose type comes from an already-typed source are not annotated: `foreach` variables, `match` and `instanceof` pattern bindings, destructuring, `catch` variables (which state their class) and closure parameters (typed in the signature).
 - Pattern bindings (destructuring, `foreach`, `match`, `instanceof`) always declare new variables. A binding whose name is already visible is a compile error (`redeclared-variable`); patterns never assign to existing variables. PHP's `[$a, $b] = [$b, $a]` swap is therefore an error; use a temporary, or `$list->swap()` for list elements.
 - **Nullability:** no implicit null. `?T` (sugar for `T|null`) must be explicit. Null-safe `?->` and `??`.
@@ -497,11 +503,12 @@ enum Shape {                                             // data-carrying
 }
 ```
 
-- Backed API: `from()` traps (`Error`), `tryFrom()` returns `?Self`, `cases()`.
+- Construction is call-like, without `new`, mirroring the pattern: `Shape::CIRCLE(1.5)`, `Shape::RECT(w: 2.0, h: 3.0)` (named arguments allowed); pure and backed cases have no parentheses (`Suit::HEARTS`). A data case without arguments is a compile error (`missing-case-arguments`); it is not a function value.
+- Backed API: `from()` traps (`ValueError`), `tryFrom()` returns `?Self`, `cases()`.
 
 `match`:
 
-- Exhaustiveness is checked at compile time over enums, unions and `bool`. Anything not provably exhaustive needs `default`. No runtime `UnhandledMatchError`.
+- Exhaustiveness is checked at compile time over enums, unions and `bool`. Anything not provably exhaustive needs `default`. No runtime `UnhandledMatchError`. Arms with an `if` guard never count toward exhaustiveness; only unguarded arms and `default` cover a case.
 - Patterns: destructuring of enum data, tuples and structs, with `if` guards. Integer range patterns: `90..=100`, `80..<90`.
 - A `match` that begins a statement is a statement, like `if` (it replaces `switch`): arms may be blocks `=> { … }` or expressions, any result is discarded, and no `;` follows the closing `}` (a `;` is tolerated; the formatter removes it). Anywhere else `match` is an expression: arms are expressions, and the enclosing statement ends with its own `;`.
 - Type of a `match` expression: all arms have the same type, or the expected type accepts every arm (`int|string`). `never` arms (`throw`, `exit(…)`) fit any type. Without an expected type, differing arm types are a compile error (`type-mismatch`).
@@ -563,6 +570,8 @@ $mid: list<int> = $list->slice(1..<3);
 if ((1..=12)->contains($month)) { … }
 ```
 
+A range whose start is past its end (`5..=1`, `0..=-1`) is empty: `count()` 0, iterates nothing. Count down with `(1..=5)->reversed()`. `slice()` with an empty range returns an empty value; bounds outside the collection still trap (`IndexError`, or `BoundaryError` off a string character boundary).
+
 Range patterns in `match` are integer-only.
 
 ### Destructuring outside match
@@ -593,10 +602,11 @@ Exceptions are unchecked. User classes extend `Error` or `Exception`; they canno
 Throwable
 ├── Error       programming faults: OverflowError, CastError, DivisionByZeroError,
 │               IndexError, KeyError, BoundaryError, AssertionError,
-│               ExclusivityError, StaticInitError
+│               ExclusivityError, StaticInitError, ValueError (argument outside its valid domain)
 └── Exception   expected failures: IoException, ParseException, EncodingException, …
 ```
 
+- Throwable API (PHP's shape): `__construct($message: string = '', $code: int = 0, $previous: ?Throwable = null)`; `final` accessors `getMessage(): string`, `getCode(): int`, `getPrevious(): ?Throwable`, `getFile(): string`, `getLine(): int`. `getTrace()` / `getTraceAsString()` are post-POC. Subclass constructors call `parent::__construct(...)` (see Property initialization).
 - `Error`s are catchable, so servers and fiber schedulers can isolate a failure. Only out-of-memory and stack overflow abort.
 - Kept from PHP 8: `finally`, multi-catch `catch ($e: A | B)`, catch without a variable, `throw` as an expression, `previous` chaining.
 - `return`, `break` and `continue` written directly in a `finally` body, leaving it, are compile errors (`control-leaves-finally`). `break` / `continue` of a loop nested inside the `finally` body are fine. `exit(…)` and `throw` remain allowed.
@@ -609,7 +619,7 @@ Throwable
 Modules:
 
 - The namespace is the directory. File names are free; a file may hold any number of declarations.
-- Each file keeps a `namespace` line, which the compiler requires to match the directory.
+- Each file keeps a `namespace` line, which the compiler requires to match the directory relative to the package root. Without a manifest there is no root, so there is no path check: single-file mode accepts any non-reserved namespace, and directory mode requires every file in the directory to declare the same namespace (`namespace-mismatch`).
 - Imports use PHP syntax: `use A\B;`, `use A\{B, C};`, `use function Str\normalize;`, `use const Math\PI;`, `use A\B as C;`.
 - No global fallback. Fully qualified names always work without `use`. A prelude auto-imports the names listed under Lexical structure, and nothing else.
 - Name resolution follows PHP. A leading `\` makes a name fully qualified: `\Env\get()`. A qualified name without it is relative to the current namespace: inside `namespace App;`, `Env\get()` means `App\Env\get()`. Stdlib calls are therefore written `\Env\get()`, `\Io\readLine()`, or imported with `use`. Names in `use` declarations are always fully qualified and take no leading `\`.
@@ -671,19 +681,19 @@ The user-facing namespace is `Task\`; fibers are the mechanism. Concurrency is s
 
 ```php
 $users: list<User> = \Task\scope(fn($s: \Task\Scope): list<User> {
-    $a: Task<User> = $s->spawn(fn(): User => $repo->find(1));
-    $b: Task<User> = $s->spawn(fn(): User => $repo->find(2));
+    $a: \Task\Handle<User> = $s->spawn(fn(): User => $repo->find(1));
+    $b: \Task\Handle<User> = $s->spawn(fn(): User => $repo->find(2));
     return [$a->await(), $b->await()];
 });
 ```
 
 | Area | API |
 | --- | --- |
-| Spawn | `$scope->spawn(fn): Task<T>`; escape hatch `Task\detach(fn)` |
-| Await | `$task->await(): T`; `Task\all(list<Task<T>>): list<T>`; `Task\race(...)` cancels the losers |
+| Spawn | `$scope->spawn(fn): Task\Handle<T>`; escape hatch `Task\detach(fn)` |
+| Await | `$task->await(): T`; `Task\all(list<Task\Handle<T>>): list<T>`; `Task\race(...)` cancels the losers |
 | Cancel | Cooperative `$task->cancel()` delivers `CancelledError` at the next suspension point; a failing child cancels its siblings |
 | Timeout | `Task\timeout(Time\Duration::seconds(5), fn)` throws `TimeoutError` |
-| Channels | `new Channel<T>(capacity: 0)` (0 = unbuffered); `send()`, `receive(): ?T` (null = closed and drained), `close()`; `foreach` until closed |
+| Channels | `new Task\Channel<T>(capacity: 0)` (0 = unbuffered); `send()`, `receive(): ?T` (null = closed and drained), `close()`; `foreach` until closed |
 | Sync | `Task\Mutex`, `Task\Semaphore` |
 | Yield / sleep | `Task\yield()`; `Task\sleep(Time\Duration::ms(100))` |
 
@@ -693,7 +703,7 @@ $users: list<User> = \Task\scope(fn($s: \Task\Scope): list<User> {
 **Select** waits on several channel operations; exactly one commits. It is a library call, not syntax, and an expression of type `T`:
 
 ```php
-$action: Action = \Channel\select(
+$action: Action = \Task\select(
     $jobs->onReceive(fn($job: ?Job): Action => handle($job)),
     $quit->onReceive(fn($_: ?bool): Action => Action::STOP),
     $out->onSend($r, fn(): Action => Action::SENT),
@@ -706,7 +716,7 @@ $action: Action = \Channel\select(
 - A receive on a closed, drained channel fires with `null`.
 - `default:` named argument gives the non-blocking form.
 - Suspends the fiber, not the thread; works on thread-crossing channels.
-- A Go-style `select` keyword may come later as sugar over this API.
+- A Go-style `select` keyword may come later as sugar over this API (`Task\select`).
 
 ### Threads (v2; model decided)
 
@@ -720,14 +730,14 @@ Threads are isolated workers with message passing: each thread owns its heap and
 | Shared mutable state | Only via stdlib | `Sync\Mutex<T>`, `Sync\Atomic<T>` |
 
 ```php
-$h: \Thread\Handle<Summary> = \Thread\spawn(fn($jobs: Channel<Job>): Summary { … });
+$h: \Thread\Handle<Summary> = \Thread\spawn(fn($jobs: \Task\Channel<Job>): Summary { … });
 $summary: Summary = $h->join();                       // Summary must be Sendable
 
 $hash: string = \Thread\run(fn(): string => \Crypto\argon2($pw)); // offload CPU work; awaitable from a fiber
 $pool: \Thread\Pool = new \Thread\Pool(workers: 8);
 ```
 
-- `Channel<T>` is thread-safe; `T` must be `Sendable` when it crosses threads.
+- `Task\Channel<T>` is thread-safe (the same type serves fibers and threads); `T` must be `Sendable` when it crosses threads.
 - `Thread\run` is also how a future FFI `#[Blocking]` call avoids stalling the scheduler.
 - Statics are isolate-local: each thread gets its own lazily initialized copy; fibers within a thread share it. Process-wide state is explicit: `private static $hits: \Sync\Atomic<i64> = new \Sync\Atomic(0);`
 
@@ -747,7 +757,7 @@ Templates compile to ordinary SCB functions with typed parameters. Delimiters fo
 {% endcall %}
 ```
 
-- **Naming:** follows the module rules. `src/Templates/Users/List.scbt` becomes `App\Templates\Users\list()`, called like any function with named arguments.
+- **Naming:** follows the module rules. `src/Templates/Users/Index.scbt` becomes `App\Templates\Users\index()`, called like any function with named arguments. A template whose function name would be a prelude name (`List.scbt` → `list()`) is a compile error.
 - **No filter language:** use methods, `|>` and SCB functions; `|` stays reserved for unions and bitwise OR.
 - **Escaping:** context-aware, on by default. The compiler parses the HTML and picks HTML, attribute, JS, CSS or URL escaping per insertion point.
 - **Raw output:** only `Html\Safe` values skip escaping, produced by `Html\raw($s)`. No `|raw` filter.
@@ -775,7 +785,7 @@ Conventions:
 | Mutate | `push($v)`, `pop(): ?T`, `insert($i, $v)`, `removeAt($i): T`, `swap($i, $j)`, `clear()`, `sort()`, `sortBy($f)`, `reverse()` |
 | New value | `concat($other)`, `sorted()`, `sortedBy($f)`, `reversed()`, `map($f)`, `filter($f)`, `reduce($init, $f)`, `chunk($size)` |
 | Query | `any($f)`, `all($f)`, `find($f): ?T`, `findIndex($f): ?int`, `each($f)` |
-| Conditional | `join($sep)` (Stringable), `sum()`, `min()`, `max()` (numeric or Comparable) |
+| Conditional | `join($sep)` (Stringable), `sum(): T` (numeric; `0` / `0.0` when empty; overflow traps), `min(): ?T`, `max(): ?T` (numeric or Comparable; `null` when empty) |
 
 `map<K, V>`:
 
@@ -797,6 +807,24 @@ Conventions:
 | Search | `contains($needle)`, `startsWith($p)`, `endsWith($s)`, `find($needle, $offset = 0): ?int` (byte offset) |
 | Transform | `replace($needle, $replacement)`, `slice($r: Range<int>)`, `split($sep, $limit = -1): list<string>`, `trim()`, `trimStart()`, `trimEnd()`, `toUpper()`, `toLower()` (Unicode, locale-independent), `repeat($n)`, `padStart($len, $pad = ' ')`, `padEnd($len, $pad = ' ')` |
 | Check | `isEmpty()` |
+
+String edge cases:
+
+- `padStart($len, $pad = ' ')` / `padEnd`: `$len` counts graphemes; a multi-character `$pad` repeats and is cut at a grapheme; an empty `$pad` traps (`ValueError`).
+- `split($sep, $limit = -1)`: `$limit` is the maximum number of parts, the last keeping the rest; `-1` means no limit; `0` or below `-1` traps (`ValueError`). An empty `$sep` traps (`ValueError`); use `graphemes()`.
+- `trim()` / `trimStart()` / `trimEnd()` strip Unicode `White_Space`. No character-list argument in the POC.
+- `repeat($n)`: `$n < 0` traps (`ValueError`); `0` gives `''`.
+- `find($needle, $offset = 0)`: `$offset` past the end traps (`IndexError`), off a character boundary traps (`BoundaryError`); an empty needle matches at `$offset`.
+
+`bytes` (a value type with copy-on-write; not `Stringable`):
+
+| Group | Methods |
+| --- | --- |
+| Size | `count(): int`, `isEmpty(): bool` |
+| Access | `$b[$i]: u8` read and write (O(1); out of range traps `IndexError`), `slice($r: Range<int>): bytes`, `foreach ($b as $byte)` yields `u8` |
+| New value | `concat($other: bytes): bytes` (`.` is strings-only) |
+| Decode | `decodeUtf8(): string` (throws `EncodingException`), `tryDecodeUtf8(): ?string` |
+| Compare | `==` / `!=` byte-wise; `Hashable` |
 
 `Range<T>`: `contains($v)`, `count()`, `toList()`, `reversed()`, `step($n)`.
 

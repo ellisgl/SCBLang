@@ -1,0 +1,18 @@
+// EXPECT-STDOUT:
+// | 6.0
+
+namespace Conformance;
+
+enum Shape
+{
+    case RECT($w: f64, $h: f64);
+}
+
+function main(): void
+{
+    $s: Shape = Shape::RECT(h: 3.0, w: 2.0);
+    $area: f64 = match ($s) {
+        Shape::RECT($w, $h) => $w * $h,
+    };
+    echo $area, "\n";
+}

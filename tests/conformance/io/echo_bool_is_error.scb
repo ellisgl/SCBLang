@@ -1,5 +1,4 @@
 // EXPECT-COMPILE-ERROR: type-mismatch
-// SPEC-OPEN: Q7
 
 namespace Conformance;
 

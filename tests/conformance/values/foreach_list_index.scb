@@ -1,0 +1,13 @@
+// EXPECT-STDOUT:
+// | 0: a
+// | 1: b
+
+namespace Conformance;
+
+function main(): void
+{
+    $names: list<string> = ['a', 'b'];
+    foreach ($names as $i => $name) {
+        echo "{$i}: {$name}\n";
+    }
+}

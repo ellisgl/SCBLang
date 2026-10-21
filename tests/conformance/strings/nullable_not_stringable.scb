@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: ?string = \Env\get('X');
+    echo $m;
+}

@@ -1,0 +1,23 @@
+// EXPECT-STDOUT:
+// | 3, 7
+// | 1.5 / 2.0
+// | value: hello
+// | 42
+
+namespace Conformance;
+
+function pick(): int|string
+{
+    return 'hello';
+}
+
+function main(): void
+{
+    $ids: list<int> = [3, 7];
+    $fs: list<f64> = [1.5, 2.0];
+    echo $ids->join(', '), "\n", $fs->join(' / '), "\n";
+    $v: int|string = pick();
+    echo "value: {$v}\n";
+    $s: string = (string) 42;
+    echo $s, "\n";
+}

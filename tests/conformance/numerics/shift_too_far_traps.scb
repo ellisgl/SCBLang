@@ -1,0 +1,10 @@
+// EXPECT-RUNTIME-ERROR: OverflowError
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: u8 = 1;
+    $n: u32 = 8;
+    $y: u8 = $x << $n;
+}

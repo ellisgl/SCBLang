@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: u8 = 1;
+    $n: int = 3;
+    $y: u8 = $x << $n;
+}

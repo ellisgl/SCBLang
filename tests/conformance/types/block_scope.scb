@@ -1,0 +1,22 @@
+// EXPECT-STDOUT:
+// | yes
+// | no
+
+namespace Conformance;
+
+function show($flag: bool): void
+{
+    if ($flag) {
+        $msg: string = 'yes';
+        echo $msg, "\n";
+    } else {
+        $msg: string = 'no';
+        echo $msg, "\n";
+    }
+}
+
+function main(): void
+{
+    show(true);
+    show(false);
+}

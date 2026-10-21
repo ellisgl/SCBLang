@@ -1,6 +1,5 @@
 // EXPECT-STDOUT:
 // | 200 127 1.5
-// SPEC-OPEN: Q4
 
 namespace Conformance;
 

@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: redeclared-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    if ($n > 0) {
+        $n: int = 2;
+    }
+}

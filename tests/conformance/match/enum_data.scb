@@ -1,6 +1,5 @@
 // EXPECT-STDOUT:
 // | 9 6 16
-// SPEC-OPEN: Q8
 
 namespace Conformance;
 

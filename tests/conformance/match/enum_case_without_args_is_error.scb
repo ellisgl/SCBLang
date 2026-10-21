@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: missing-case-arguments
+
+namespace Conformance;
+
+enum Shape
+{
+    case CIRCLE($r: f64);
+}
+
+function main(): void
+{
+    $s: Shape = Shape::CIRCLE;
+}
