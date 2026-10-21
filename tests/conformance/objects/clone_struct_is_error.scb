@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: clone-value-type
+
+namespace Conformance;
+
+struct Point
+{
+    public $x: int = 0;
+}
+
+function main(): void
+{
+    $p: Point = new Point();
+    $q: Point = clone $p;
+}

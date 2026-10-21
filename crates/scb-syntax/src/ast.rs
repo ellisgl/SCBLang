@@ -3,6 +3,10 @@
 //! The tree mirrors SPEC "Grammar sketch". Syntax that is out of POC scope is
 //! diagnosed (`not-supported-in-poc`) and left out of the tree, so later stages never
 //! see it. Name resolution and typing happen in `scb-types`.
+//!
+//! Exception: generics (`type_params`, `where_bounds`) and bodiless functions appear
+//! only in the stdlib declaration stubs, which are parsed in stdlib mode
+//! ([`crate::parse_stdlib`]); in user code they are always empty / present.
 
 use crate::Span;
 
@@ -58,10 +62,35 @@ pub enum Decl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDecl {
     pub name: Ident,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret: Type,
-    pub body: Block,
+    /// `None` only for stdlib stubs (implemented natively).
+    pub body: Option<Block>,
     pub span: Span,
+}
+
+/// `T`, `out T`, `K of Hashable`, `V = string` (stdlib stubs only in the POC).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam {
+    pub variance: Variance,
+    pub name: Ident,
+    pub bound: Option<Type>,
+    pub default: Option<Type>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Variance {
+    Invariant,
+    In,
+    Out,
+}
+
+/// `where T of Stringable` on a conditional method (stdlib stubs only in the POC).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhereBound {
+    pub param: Ident,
+    pub bound: Type,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +132,7 @@ pub struct ClassDecl {
     pub kind: ClassKind,
     pub readonly: bool,
     pub name: Ident,
+    pub type_params: Vec<TypeParam>,
     pub extends: Option<NamedType>,
     pub implements: Vec<NamedType>,
     pub members: Vec<Member>,
@@ -113,6 +143,7 @@ pub struct ClassDecl {
 pub struct StructDecl {
     pub readonly: bool,
     pub name: Ident,
+    pub type_params: Vec<TypeParam>,
     pub implements: Vec<NamedType>,
     pub members: Vec<Member>,
     pub span: Span,
@@ -121,6 +152,7 @@ pub struct StructDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct InterfaceDecl {
     pub name: Ident,
+    pub type_params: Vec<TypeParam>,
     pub extends: Vec<NamedType>,
     pub members: Vec<Member>,
     pub span: Span,
@@ -129,6 +161,7 @@ pub struct InterfaceDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDecl {
     pub name: Ident,
+    pub type_params: Vec<TypeParam>,
     /// `: int` or `: string` for a backed enum.
     pub backing: Option<Type>,
     pub implements: Vec<NamedType>,
@@ -194,10 +227,13 @@ pub struct Method {
     pub is_static: bool,
     pub mutating: bool,
     pub name: Ident,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     /// `None` only for `__construct` and `__destruct`.
     pub ret: Option<Type>,
-    /// `None` for `;` (abstract and interface methods).
+    /// Conditional-method bounds (`where T of Stringable`).
+    pub where_bounds: Vec<WhereBound>,
+    /// `None` for `;` (abstract and interface methods, stdlib stubs).
     pub body: Option<Block>,
     pub span: Span,
 }

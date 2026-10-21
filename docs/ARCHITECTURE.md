@@ -15,7 +15,7 @@ How the SCB POC interpreter is put together, for someone opening the code for th
 | Source map, spans, diagnostics | `scb-syntax` | `SourceMap`, `Span`, `Diagnostic` | done (M0) |
 | Lexer | `scb-syntax` | `lex()` | done (M1) |
 | Parser and AST | `scb-syntax` | `parse()`, `parse_source()`, `ast` | done (M2) |
-| Name resolution, type checking | `scb-types` | `check()` → `Program` | M3 |
+| Name resolution, type checking | `scb-types` | `check()` → `Program` (typed IR) | done (M3) |
 | Interpreter, values, refcounting | `scb-runtime` | `Isolate::run()` | M4–M6 |
 | Core library | `scb-stdlib` | — | M7 |
 | Conformance runner | `scb-conformance` | `cargo run -p scb-conformance` | done (M0) |
@@ -35,6 +35,17 @@ A hand-written, context-free scanner. It produces `Token { kind, span }` values 
 Recursive descent for declarations and statements, with Pratt-style precedence climbing for binary operators. `parser/mod.rs` explains the cursor, error recovery and depth limits; `parser/expr.rs` explains the precedence levels. The output is the AST in `ast.rs`, which mirrors SPEC "Grammar sketch". Removed PHP syntax and out-of-scope features are reported but never appear in the tree.
 
 `dump.rs` prints the AST as an S-expression. The golden tests in `scb-syntax/tests/golden/` compare that dump against checked-in `.ast` files; they cover every code block in `SPEC.md`.
+
+## Checker (`scb-types`)
+
+`check()` runs these passes over the parsed user files and the stdlib stubs:
+
+1. **Stdlib stubs** (`crates/scb-types/stdlib/*.scb`, plus the numeric types generated in `stdlib.rs`) declare the core library in SCB syntax. They are parsed in *stdlib mode*, which allows generics, `where` bounds and bodiless (native) functions. `namespace Prelude;` is the root namespace. The checker treats stdlib signatures exactly like user code, so `$list->push('a')` on a `list<int>` is an ordinary `type-mismatch`.
+2. **Collection** (`collect.rs`): register every name (types, functions and constants live in separate tables, as in PHP), then resolve headers (parents, interfaces, type parameters), then members (fields with inherited layout, methods, constants, statics, enum cases). Name lookup follows `resolve.rs`: `use` alias, then the file's namespace, then the prelude.
+3. **Validation** (`validate.rs`): class-level rules (`final`, overrides, abstract methods, interface defaults) and the definite-assignment analysis of constructors (`uninitialized-property`).
+4. **Bodies** (`check/`): each function, method, closure and initializer is checked into the **TIR** (`tir.rs`). The TIR is the program the interpreter runs: every expression has its type, locals are numbered frame slots, calls name their target and list their arguments by parameter index in written order, assignment targets are places with a type at every level (for copy-on-write), and `?->` chains are explicit. `check/mod.rs` explains frames, captures and flow typing; each submodule documents its own rules.
+
+Types are interned (`ty.rs`): a `Ty` is a small integer, unions are normalized, and `?T` is `T|null`.
 
 ## The compiler thread (`scb-types/src/lib.rs`)
 

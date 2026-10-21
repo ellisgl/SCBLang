@@ -125,18 +125,18 @@ fn var(i: &Ident) -> S {
 
 fn decl(d: &Decl) -> S {
     match d {
-        Decl::Function(f) => tagged(
-            "function",
-            [
-                atom(&*f.name.name),
-                params(&f.params),
-                list![atom("returns"), ty(&f.ret)],
-                block(&f.body),
-            ],
-        ),
+        Decl::Function(f) => {
+            let mut v = vec![atom("function"), atom(&*f.name.name)];
+            type_params(&f.type_params, &mut v);
+            v.push(params(&f.params));
+            v.push(list![atom("returns"), ty(&f.ret)]);
+            v.push(f.body.as_ref().map_or_else(|| atom("no-body"), block));
+            S::List(v)
+        }
         Decl::Const(c) => const_decl(c),
         Decl::Class(c) => {
             let mut v = vec![atom("class"), atom(&*c.name.name)];
+            type_params(&c.type_params, &mut v);
             match c.kind {
                 ClassKind::Plain => {}
                 ClassKind::Extendable => v.push(atom("extendable")),
@@ -154,6 +154,7 @@ fn decl(d: &Decl) -> S {
         }
         Decl::Struct(s) => {
             let mut v = vec![atom("struct"), atom(&*s.name.name)];
+            type_params(&s.type_params, &mut v);
             if s.readonly {
                 v.push(atom("readonly"));
             }
@@ -163,6 +164,7 @@ fn decl(d: &Decl) -> S {
         }
         Decl::Interface(i) => {
             let mut v = vec![atom("interface"), atom(&*i.name.name)];
+            type_params(&i.type_params, &mut v);
             if !i.extends.is_empty() {
                 v.push(tagged("extends", i.extends.iter().map(named)));
             }
@@ -171,6 +173,7 @@ fn decl(d: &Decl) -> S {
         }
         Decl::Enum(e) => {
             let mut v = vec![atom("enum"), atom(&*e.name.name)];
+            type_params(&e.type_params, &mut v);
             if let Some(b) = &e.backing {
                 v.push(list![atom("backed"), ty(b)]);
             }
@@ -188,6 +191,30 @@ fn decl(d: &Decl) -> S {
             S::List(v)
         }
     }
+}
+
+fn type_params(tps: &[TypeParam], v: &mut Vec<S>) {
+    if tps.is_empty() {
+        return;
+    }
+    v.push(tagged(
+        "type-params",
+        tps.iter().map(|tp| {
+            let mut t = vec![atom(&*tp.name.name)];
+            match tp.variance {
+                Variance::Invariant => {}
+                Variance::In => t.push(atom("in")),
+                Variance::Out => t.push(atom("out")),
+            }
+            if let Some(b) = &tp.bound {
+                t.push(list![atom("of"), ty(b)]);
+            }
+            if let Some(d) = &tp.default {
+                t.push(list![atom("="), ty(d)]);
+            }
+            S::List(t)
+        }),
+    ));
 }
 
 fn implements(list: &[NamedType], v: &mut Vec<S>) {
@@ -244,9 +271,18 @@ fn member(m: &Member) -> S {
             if m.mutating {
                 v.push(atom("mutating"));
             }
+            type_params(&m.type_params, &mut v);
             v.push(params(&m.params));
             if let Some(r) = &m.ret {
                 v.push(list![atom("returns"), ty(r)]);
+            }
+            if !m.where_bounds.is_empty() {
+                v.push(tagged(
+                    "where",
+                    m.where_bounds
+                        .iter()
+                        .map(|w| list![atom(&*w.param.name), ty(&w.bound)]),
+                ));
             }
             match &m.body {
                 Some(b) => v.push(block(b)),

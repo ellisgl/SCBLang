@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: missing-method
+
+namespace Conformance;
+
+interface Shape
+{
+    public function area(): f64;
+}
+
+class Square implements Shape
+{
+    public function __construct(public $side: f64) {}
+}
+
+function main(): void
+{
+}

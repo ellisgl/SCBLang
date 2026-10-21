@@ -1,0 +1,13 @@
+// SPEC "Core library": `Io`. `echo` and `print` desugar to `\Io\print((string) $x)`.
+
+namespace Io;
+
+function print($s: string): void;
+
+function eprint($s: string): void;
+
+// The next line without its terminator (`\n` or `\r\n`), or `null` at end of input.
+// Throws `EncodingException` on invalid UTF-8.
+function readLine(): ?string;
+
+function readAll(): bytes;

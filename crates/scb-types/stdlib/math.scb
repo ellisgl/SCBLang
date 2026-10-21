@@ -1,0 +1,21 @@
+// SPEC "Numerics" helpers and `Math\Rounding` (SPEC "Casts and conversions").
+
+namespace Math;
+
+const PI: f64 = 3.141592653589793;
+
+const E: f64 = 2.718281828459045;
+
+// Floor division and a remainder that is non-negative for a positive divisor.
+function floorDiv<N of __Integer>($a: N, $b: N): N;
+
+function mod<N of __Integer>($a: N, $b: N): N;
+
+enum Rounding
+{
+    case HALF_UP;
+    case HALF_EVEN;
+    case FLOOR;
+    case CEIL;
+    case TRUNCATE;
+}

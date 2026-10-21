@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: readonly-write
+
+namespace Conformance;
+
+class User
+{
+    public function __construct(public readonly $id: int) {}
+
+    public function reset(): void
+    {
+        $this->id = 0;
+    }
+}
+
+function main(): void
+{
+}

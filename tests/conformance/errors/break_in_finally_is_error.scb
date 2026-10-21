@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: control-leaves-finally
+
+namespace Conformance;
+
+function main(): void
+{
+    while (true) {
+        try {
+            echo "work\n";
+        } finally {
+            break;
+        }
+    }
+}

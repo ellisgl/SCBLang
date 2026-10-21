@@ -5,17 +5,81 @@
 //! once built and shared between isolates as `Arc<Program>` (CLAUDE.md architecture
 //! rule 3).
 
-use scb_syntax::{Diagnostic, SourceMap};
+mod check;
+mod collect;
+pub mod decls;
+mod resolve;
+mod stdlib;
+pub mod tir;
+pub mod ty;
+mod validate;
+
+use std::path::Path;
+
+use scb_syntax::{Diagnostic, SourceMap, ast};
+
+use crate::decls::Decls;
+use crate::resolve::{ParsedFile, Uses, qname_text};
+use crate::tir::FuncId;
+use crate::ty::Types;
 
 /// A compiled program. Immutable; `Send + Sync` so one copy can serve many isolates.
 #[derive(Debug)]
 pub struct Program {
-    sources: SourceMap,
+    /// User files first, then the stdlib stubs (as `<stdlib>/name.scb`).
+    pub sources: SourceMap,
+    pub types: Types,
+    pub decls: Decls,
+    /// Every function body, indexed by [`FuncId`]: functions, methods (including
+    /// stdlib builtins), closures.
+    pub funcs: Vec<tir::Func>,
+    /// Initializer of each constant (namespace and class), indexed by `ConstId`.
+    pub consts: Vec<tir::Expr>,
+    /// Initializer of each static property (evaluated lazily), indexed by `StaticId`.
+    pub statics: Vec<tir::Expr>,
+    /// The program's `main`.
+    pub main: FuncId,
 }
 
 impl Program {
     pub fn sources(&self) -> &SourceMap {
         &self.sources
+    }
+}
+
+/// Checker state shared by all passes. `files` are the parsed user files and stubs;
+/// everything else is built up by the passes and moved into the [`Program`].
+pub(crate) struct Ctx<'a> {
+    pub files: &'a [ParsedFile],
+    pub sources: &'a SourceMap,
+    pub types: Types,
+    pub decls: Decls,
+    /// Bodies, filled as they are checked (`None` until then).
+    pub funcs: Vec<Option<tir::Func>>,
+    pub consts: Vec<Option<tir::Expr>>,
+    pub statics: Vec<Option<tir::Expr>>,
+    pub diags: Vec<Diagnostic>,
+    /// The bodies being checked: a function and the closures nested in it.
+    pub frames: Vec<check::Frame>,
+}
+
+impl<'a> Ctx<'a> {
+    fn new(files: &'a [ParsedFile], sources: &'a SourceMap) -> Self {
+        Ctx {
+            files,
+            sources,
+            types: Types::new(),
+            decls: Decls::default(),
+            funcs: Vec::new(),
+            consts: Vec::new(),
+            statics: Vec::new(),
+            diags: Vec::new(),
+            frames: Vec::new(),
+        }
+    }
+
+    pub fn report(&mut self, d: Diagnostic) {
+        self.diags.push(d);
     }
 }
 
@@ -55,33 +119,127 @@ pub fn check(sources: SourceMap) -> CheckResult {
     }
 }
 
-/// The front end proper: lex, parse (and from M3, check) every file.
-///
-/// M2: every file is lexed and parsed, and lexical and syntax errors are reported. The
-/// checker (M3) does not exist yet, so a file that parses cleanly still fails with
-/// `not-implemented`.
-fn compile(sources: SourceMap) -> CheckResult {
+/// The front end proper: lex and parse every file, then collect declarations, check
+/// every body and assemble the [`Program`].
+fn compile(mut sources: SourceMap) -> CheckResult {
     let mut diagnostics = Vec::new();
-    let mut decls = 0;
-    for (id, file) in sources.files() {
-        let (ast, diags) = scb_syntax::parse_source(id, &file.text);
-        decls += ast.map_or(0, |a| a.decls.len());
+    let mut files = Vec::new();
+    let user: Vec<_> = sources.files().map(|(id, _)| id).collect();
+    for id in user {
+        let (ast, diags) = scb_syntax::parse_source(id, &sources.file(id).text);
         diagnostics.extend(diags);
+        if let Some(ast) = ast {
+            let path = sources.file(id).path.clone();
+            let main_file = path.file_name().is_some_and(|n| n == "main.scb") || sources.len() == 1;
+            let mut f = parsed_file(ast, false);
+            f.main_file = main_file;
+            f.path = path.display().to_string();
+            files.push(f);
+        }
     }
-    if diagnostics.is_empty() {
-        diagnostics.push(
-            Diagnostic::new(
-                "not-implemented",
-                "the SCB type checker is not implemented yet",
-            )
-            .with_note(format!(
-                "{} file(s) parsed, {decls} declaration(s)",
-                sources.len()
-            )),
-        );
+    if !diagnostics.is_empty() {
+        return Err((sources, diagnostics));
     }
-    Err((sources, diagnostics))
+
+    for (name, text) in stdlib::stubs() {
+        let path = format!("<stdlib>/{name}");
+        let id = match sources.add(Path::new(&path), text.into_bytes()) {
+            Ok(id) => id,
+            Err(d) => return Err((sources, vec![d])),
+        };
+        let (tokens, mut diags) = scb_syntax::lex(id, &sources.file(id).text);
+        let (ast, parse_diags) = scb_syntax::parse_stdlib(id, tokens);
+        diags.extend(parse_diags);
+        if !diags.is_empty() {
+            // A broken stub is a bug in this crate, not in the user's program.
+            let mut out = vec![Diagnostic::new(
+                "internal-error",
+                format!("stdlib stub {path} does not parse"),
+            )];
+            out.extend(diags);
+            return Err((sources, out));
+        }
+        files.push(parsed_file(ast, true));
+    }
+
+    let mut ctx = Ctx::new(&files, &sources);
+    ctx.register();
+    ctx.headers();
+    ctx.members();
+    ctx.validate();
+    let main = ctx.check_bodies();
+    let Ctx {
+        types,
+        decls,
+        funcs,
+        consts,
+        statics,
+        diags,
+        ..
+    } = ctx;
+    let main = match main {
+        Some(main) if diags.is_empty() => main,
+        _ => return Err((sources, diags)),
+    };
+    Ok(Program {
+        sources,
+        types,
+        decls,
+        funcs: funcs
+            .into_iter()
+            .map(|f| f.expect("every body is checked"))
+            .collect(),
+        consts: consts
+            .into_iter()
+            .map(|c| c.expect("every constant is checked"))
+            .collect(),
+        statics: statics
+            .into_iter()
+            .map(|s| s.expect("every static is checked"))
+            .collect(),
+        main,
+    })
 }
+
+/// A parsed file with its namespace and `use` imports. `namespace Prelude;` (stubs
+/// only) is the root namespace.
+fn parsed_file(ast: ast::File, stdlib: bool) -> ParsedFile {
+    let mut namespace = qname_text(&ast.namespace);
+    if stdlib && namespace == stdlib::PRELUDE_NAMESPACE {
+        namespace.clear();
+    }
+    let mut uses = Uses::default();
+    for u in &ast.uses {
+        let fqn = qname_text(&u.name);
+        let alias = u.alias.as_ref().map_or_else(
+            || {
+                u.name
+                    .parts
+                    .last()
+                    .map_or(String::new(), |p| p.name.to_string())
+            },
+            |a| a.name.to_string(),
+        );
+        let table = match u.kind {
+            ast::UseKind::Type => &mut uses.types,
+            ast::UseKind::Function => &mut uses.functions,
+            ast::UseKind::Const => &mut uses.consts,
+        };
+        table.insert(alias, fqn);
+    }
+    ParsedFile {
+        ast,
+        namespace,
+        stdlib,
+        uses,
+        main_file: false,
+        path: String::new(),
+    }
+}
+
+#[cfg(test)]
+#[path = "check_tests.rs"]
+mod check_tests;
 
 #[cfg(test)]
 mod tests {
@@ -94,20 +252,16 @@ mod tests {
         assert_send_sync::<Program>();
     }
 
-    #[test]
-    fn check_reports_not_implemented() {
-        let (_, diags) = check(SourceMap::new()).unwrap_err();
-        assert_eq!(diags[0].kind, "not-implemented");
-    }
-
     fn check_body(body: &str) -> Vec<&'static str> {
         let mut sources = SourceMap::new();
         let text = format!("namespace T;\nfunction main(): void\n{{\n{body}\n}}\n");
         sources
             .add(std::path::Path::new("t.scb"), text.into_bytes())
             .unwrap();
-        let (_, diags) = check(sources).unwrap_err();
-        diags.iter().map(|d| d.kind).collect()
+        match check(sources) {
+            Ok(_) => Vec::new(),
+            Err((_, diags)) => diags.iter().map(|d| d.kind).collect(),
+        }
     }
 
     /// Regression: these inputs used to overflow the stack and abort the process.
@@ -140,7 +294,7 @@ mod tests {
         let parens = format!("$x: int = {}1{};", "(".repeat(400), ")".repeat(400));
         let chain = format!("$x: int = 1{};", " + 1".repeat(400));
         for body in [parens, chain] {
-            assert_eq!(check_body(&body), ["not-implemented"]);
+            assert_eq!(check_body(&body), Vec::<&str>::new());
         }
     }
 }

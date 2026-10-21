@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: list<int> = [1];
+    $b: list<int> = [1];
+    if ($a is $b) {
+        echo "same\n";
+    }
+}

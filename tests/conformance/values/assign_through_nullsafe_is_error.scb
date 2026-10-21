@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: write-through-nullsafe
+
+namespace Conformance;
+
+class Box
+{
+    public function __construct(public $v: int) {}
+}
+
+function main(): void
+{
+    $b: ?Box = new Box(1);
+    $b?->v = 2;
+}

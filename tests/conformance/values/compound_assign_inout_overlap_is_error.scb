@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: exclusivity-violation
+
+namespace Conformance;
+
+function grow(inout $n: int): int
+{
+    $n++;
+    return 1;
+}
+
+function main(): void
+{
+    $a: int = 1;
+    $a += grow(inout $a);
+}

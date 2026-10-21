@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: readonly-write
+
+namespace Conformance;
+
+struct Point
+{
+    public function __construct(public $x: int, public $y: int) {}
+}
+
+function main(): void
+{
+    readonly $p: Point = new Point(1, 2);
+    $p->x = 5;
+}

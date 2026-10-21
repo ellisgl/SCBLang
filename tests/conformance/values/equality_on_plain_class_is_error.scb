@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: unsatisfied-bound
+
+namespace Conformance;
+
+class Token
+{
+    public function __construct(public $text: string) {}
+}
+
+function main(): void
+{
+    $a: Token = new Token("x");
+    $b: Token = new Token("x");
+    if ($a == $b) {
+        echo "equal\n";
+    }
+}

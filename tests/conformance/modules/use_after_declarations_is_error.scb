@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: syntax-error
+
+namespace Conformance;
+
+function helper(): void
+{
+}
+
+use Math\Rounding;
+
+function main(): void
+{
+}

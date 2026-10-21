@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: missing-mutating
+
+namespace Conformance;
+
+struct Point
+{
+    public function __construct(public $x: int) {}
+
+    public function shift($dx: int): void
+    {
+        $this->x += $dx;
+    }
+}
+
+function main(): void
+{
+}

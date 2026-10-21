@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: non-exhaustive-match
+
+namespace Conformance;
+
+function main(): void
+{
+    $age: int = 30;
+    $group: string = match {
+        $age < 13 => "child",
+        $age < 20 => "teen",
+    };
+}

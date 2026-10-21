@@ -1,0 +1,7 @@
+// EXPECT-COMPILE-ERROR: invalid-main
+
+namespace Conformance;
+
+function main($n: int): void
+{
+}

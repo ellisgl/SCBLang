@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+class Failure extends Throwable
+{
+}
+
+function main(): void
+{
+}

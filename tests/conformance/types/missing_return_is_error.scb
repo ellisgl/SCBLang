@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: missing-return
+
+namespace Conformance;
+
+function sign($n: int): int
+{
+    if ($n > 0) {
+        return 1;
+    }
+}
+
+function main(): void
+{
+}

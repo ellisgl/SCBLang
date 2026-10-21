@@ -239,24 +239,42 @@ impl Parser {
         }
     }
 
-    /// `<T, U of Bound = Default>` on a declaration: user generics are out of POC scope.
-    fn type_params(&mut self) -> PResult<()> {
+    /// `<T, U of Bound = Default>` on a declaration. User generics are out of POC
+    /// scope (reported); stdlib stubs use them to declare the core library.
+    fn type_params(&mut self) -> PResult<Vec<TypeParam>> {
         if !self.at(Punct::Lt) {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let start = self.bump();
+        let mut params = Vec::new();
         loop {
-            if self.at_word("in") || self.at_word("out") {
+            let variance = if self.at_word("in") && matches!(self.peek_at(1), TokenKind::Ident(_)) {
                 self.bump();
-            }
-            self.ident("a type parameter")?;
-            if self.at_word("of") {
+                Variance::In
+            } else if self.at_word("out") && matches!(self.peek_at(1), TokenKind::Ident(_)) {
                 self.bump();
-                self.ty()?;
-            }
-            if self.eat(Punct::Eq) {
-                self.ty()?;
-            }
+                Variance::Out
+            } else {
+                Variance::Invariant
+            };
+            let name = self.ident("a type parameter")?;
+            let bound = if self.at_word("of") {
+                self.bump();
+                Some(self.ty()?)
+            } else {
+                None
+            };
+            let default = if self.eat(Punct::Eq) {
+                Some(self.ty()?)
+            } else {
+                None
+            };
+            params.push(TypeParam {
+                variance,
+                name,
+                bound,
+                default,
+            });
             if !self.eat(Punct::Comma) {
                 break;
             }
@@ -264,9 +282,39 @@ impl Parser {
         if !self.eat_close_angle() {
             return Err(self.expected("`>`"));
         }
-        let span = self.span_from(start);
-        self.not_in_poc(span, "user-defined generics");
-        Ok(())
+        if !self.stdlib {
+            let span = self.span_from(start);
+            self.not_in_poc(span, "user-defined generics");
+            return Ok(Vec::new());
+        }
+        Ok(params)
+    }
+
+    /// `where T of Bound, …` after a method signature (conditional methods).
+    fn where_bounds(&mut self) -> PResult<Vec<WhereBound>> {
+        if !self.at_word("where") {
+            return Ok(Vec::new());
+        }
+        let start = self.bump();
+        let mut bounds = Vec::new();
+        loop {
+            let param = self.ident("a type parameter")?;
+            if !self.at_word("of") {
+                return Err(self.expected("`of`"));
+            }
+            self.bump();
+            let bound = self.ty()?;
+            bounds.push(WhereBound { param, bound });
+            if !self.eat(Punct::Comma) {
+                break;
+            }
+        }
+        if !self.stdlib {
+            let span = self.span_from(start);
+            self.not_in_poc(span, "conditional methods (`where`)");
+            return Ok(Vec::new());
+        }
+        Ok(bounds)
     }
 
     /// `: T`, or a `missing-return-type` diagnostic (SPEC "Grammar sketch → Notes").
@@ -508,14 +556,25 @@ fn function_decl(p: &mut Parser) -> PResult<FunctionDecl> {
         let span = p.bump();
         p.removed(span, "`&` references are removed", "return a value");
     }
-    let name = p.ident("a function name")?;
-    p.type_params()?;
+    // The stdlib declares functions named by keywords (`Io\print`, `Process\exit`:
+    // the targets of the `print` and `exit` statements); user code cannot.
+    let name = if p.stdlib {
+        p.name("a function name")?
+    } else {
+        p.ident("a function name")?
+    };
+    let type_params = p.type_params()?;
     let params = p.params(false)?;
     let ret = p.return_type(&format!("function `{}`", name.name))?;
     let ret = ret.unwrap_or_else(|| p.void_type());
-    let body = p.block()?;
+    let body = if p.stdlib && p.eat(Punct::Semi) {
+        None
+    } else {
+        Some(p.block()?)
+    };
     Ok(FunctionDecl {
         name,
+        type_params,
         params,
         ret,
         body,
@@ -589,7 +648,7 @@ fn class_or_struct(p: &mut Parser) -> PResult<Option<Decl>> {
             );
         }
         let name = p.ident("a struct name")?;
-        p.type_params()?;
+        let type_params = p.type_params()?;
         if p.at_kw(Keyword::Extends) {
             let span = p.span();
             p.report(
@@ -604,6 +663,7 @@ fn class_or_struct(p: &mut Parser) -> PResult<Option<Decl>> {
         return Ok(Some(Decl::Struct(StructDecl {
             readonly,
             name,
+            type_params,
             implements,
             members,
             span: p.span_from(start),
@@ -611,7 +671,7 @@ fn class_or_struct(p: &mut Parser) -> PResult<Option<Decl>> {
     }
     p.expect_kw(Keyword::Class)?;
     let name = p.ident("a class name")?;
-    p.type_params()?;
+    let type_params = p.type_params()?;
     let extends = if p.eat_kw(Keyword::Extends) {
         Some(p.named_type()?)
     } else {
@@ -623,6 +683,7 @@ fn class_or_struct(p: &mut Parser) -> PResult<Option<Decl>> {
         kind,
         readonly,
         name,
+        type_params,
         extends,
         implements,
         members,
@@ -649,7 +710,7 @@ fn type_list(p: &mut Parser) -> PResult<Vec<NamedType>> {
 fn interface_decl(p: &mut Parser) -> PResult<InterfaceDecl> {
     let start = p.expect_kw(Keyword::Interface)?;
     let name = p.ident("an interface name")?;
-    p.type_params()?;
+    let type_params = p.type_params()?;
     let extends = if p.eat_kw(Keyword::Extends) {
         type_list(p)?
     } else {
@@ -658,6 +719,7 @@ fn interface_decl(p: &mut Parser) -> PResult<InterfaceDecl> {
     let (members, _) = body(p, BodyKind::Interface)?;
     Ok(InterfaceDecl {
         name,
+        type_params,
         extends,
         members,
         span: p.span_from(start),
@@ -667,7 +729,7 @@ fn interface_decl(p: &mut Parser) -> PResult<InterfaceDecl> {
 fn enum_decl(p: &mut Parser) -> PResult<EnumDecl> {
     let start = p.expect_kw(Keyword::Enum)?;
     let name = p.ident("an enum name")?;
-    p.type_params()?;
+    let type_params = p.type_params()?;
     let backing = if p.eat(Punct::Colon) {
         Some(p.ty()?)
     } else {
@@ -677,6 +739,7 @@ fn enum_decl(p: &mut Parser) -> PResult<EnumDecl> {
     let (members, cases) = body(p, BodyKind::Enum)?;
     Ok(EnumDecl {
         name,
+        type_params,
         backing,
         implements,
         cases,
@@ -875,7 +938,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
                     .with_span(start),
                 );
             }
-            p.type_params()?;
+            let type_params = p.type_params()?;
             let special = matches!(&*name.name, "__construct" | "__destruct");
             let params = p.params(&*name.name == "__construct")?;
             let ret = if special {
@@ -897,14 +960,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
                 let what = format!("method `{}`", name.name);
                 Some(p.return_type(&what)?.unwrap_or_else(|| p.void_type()))
             };
-            if p.at_word("where") {
-                let where_start = p.bump();
-                while !p.at(Punct::LBrace) && !p.at(Punct::Semi) && !p.at_eof() {
-                    p.bump();
-                }
-                let span = p.span_from(where_start);
-                p.not_in_poc(span, "conditional methods (`where`)");
-            }
+            let where_bounds = p.where_bounds()?;
             let body = if p.eat(Punct::Semi) {
                 None
             } else {
@@ -916,8 +972,10 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
                 is_static,
                 mutating,
                 name,
+                type_params,
                 params,
                 ret,
+                where_bounds,
                 body,
                 span: p.span_from(start),
             })))

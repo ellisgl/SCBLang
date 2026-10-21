@@ -1,0 +1,23 @@
+// EXPECT-COMPILE-ERROR: mutating-temporary
+
+namespace Conformance;
+
+struct Counter
+{
+    public $n: int = 0;
+
+    public mutating function bump(): void
+    {
+        $this->n++;
+    }
+}
+
+function make(): Counter
+{
+    return new Counter();
+}
+
+function main(): void
+{
+    make()->bump();
+}

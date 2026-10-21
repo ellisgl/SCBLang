@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: tuple-index
+
+namespace Conformance;
+
+function main(): void
+{
+    $pair: tuple<string, int> = ["a", 1];
+    $x: int = $pair[2];
+}

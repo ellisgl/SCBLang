@@ -50,7 +50,7 @@ fn stmts(src: &str) -> String {
     let crate::ast::Decl::Function(f) = &ast.decls[0] else {
         panic!("expected a function")
     };
-    flat(&dump_stmts(&f.body.stmts))
+    flat(&dump_stmts(&f.body.as_ref().unwrap().stmts))
 }
 
 /// One expression statement, dumped.
@@ -65,7 +65,7 @@ fn expr(src: &str) -> String {
     let crate::ast::Decl::Function(f) = &ast.decls[0] else {
         panic!("expected a function")
     };
-    let StmtKind::Expr(e) = &f.body.stmts[0].kind else {
+    let StmtKind::Expr(e) = &f.body.as_ref().unwrap().stmts[0].kind else {
         panic!("expected an expression statement")
     };
     flat(&dump_expr(e))
@@ -789,7 +789,7 @@ fn spans_cover_the_source() {
     let crate::ast::Decl::Function(f) = &ast.decls[0] else {
         panic!()
     };
-    let s = &f.body.stmts[0];
+    let s = &f.body.as_ref().unwrap().stmts[0];
     assert_eq!(
         &src[s.span.start as usize..s.span.end as usize],
         "$total: int = $a + $b * 2;"

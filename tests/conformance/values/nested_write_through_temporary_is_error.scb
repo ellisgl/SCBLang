@@ -1,0 +1,18 @@
+// EXPECT-COMPILE-ERROR: mutating-temporary
+
+namespace Conformance;
+
+struct Line
+{
+    public function __construct(public $qty: int) {}
+}
+
+function lines(): list<Line>
+{
+    return [new Line(1)];
+}
+
+function main(): void
+{
+    lines()[0]->qty = 2;
+}

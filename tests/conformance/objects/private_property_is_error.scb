@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: visibility
+
+namespace Conformance;
+
+class Account
+{
+    public function __construct(private $balance: int) {}
+}
+
+function main(): void
+{
+    $a: Account = new Account(10);
+    echo $a->balance, "\n";
+}

@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: extend-final
+
+namespace Conformance;
+
+class Base
+{
+}
+
+class Child extends Base
+{
+}
+
+function main(): void
+{
+}

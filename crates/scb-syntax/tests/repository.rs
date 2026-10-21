@@ -46,6 +46,7 @@ const SYNTAX_KINDS: &[&str] = &[
 const CHECKER_CASES: &[&str] = &[
     "tests/conformance/poc_scope/callable_interface.scb",
     "tests/conformance/objects/final_in_final_class_is_error.scb",
+    "tests/conformance/objects/final_struct_method_is_error.scb",
 ];
 
 fn scb_files(dir: &Path, out: &mut Vec<PathBuf>) {

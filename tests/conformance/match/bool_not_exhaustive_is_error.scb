@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: non-exhaustive-match
+
+namespace Conformance;
+
+function main(): void
+{
+    $b: bool = true;
+    $s: string = match ($b) {
+        true => "yes",
+    };
+}

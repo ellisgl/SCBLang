@@ -1,0 +1,27 @@
+// EXPECT-COMPILE-ERROR: default-method-conflict
+
+namespace Conformance;
+
+interface Named
+{
+    public function describe(): string
+    {
+        return "named";
+    }
+}
+
+interface Labeled
+{
+    public function describe(): string
+    {
+        return "labeled";
+    }
+}
+
+class Thing implements Named, Labeled
+{
+}
+
+function main(): void
+{
+}

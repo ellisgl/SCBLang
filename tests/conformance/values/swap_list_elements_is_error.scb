@@ -1,0 +1,16 @@
+// EXPECT-COMPILE-ERROR: exclusivity-violation
+
+namespace Conformance;
+
+function swap(inout $a: int, inout $b: int): void
+{
+    $t: int = $a;
+    $a = $b;
+    $b = $t;
+}
+
+function main(): void
+{
+    $list: list<int> = [1, 2];
+    swap(inout $list[0], inout $list[1]);
+}

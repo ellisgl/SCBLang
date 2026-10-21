@@ -1,0 +1,11 @@
+// SPEC "Source files and program entry": `exit` / `die` desugar to `\Process\exit`.
+
+namespace Process;
+
+// Unwinds (runs `finally` blocks and destructors); not catchable.
+function exit($code: int = 0): never;
+
+// Terminates immediately: no destructors, no stdout flush.
+function abort(): never;
+
+function name(): string;

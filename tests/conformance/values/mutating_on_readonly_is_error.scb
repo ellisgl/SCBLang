@@ -1,0 +1,19 @@
+// EXPECT-COMPILE-ERROR: readonly-write
+
+namespace Conformance;
+
+struct Counter
+{
+    public $n: int = 0;
+
+    public mutating function bump(): void
+    {
+        $this->n++;
+    }
+}
+
+function main(): void
+{
+    readonly $c: Counter = new Counter();
+    $c->bump();
+}

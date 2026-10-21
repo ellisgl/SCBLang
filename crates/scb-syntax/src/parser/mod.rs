@@ -57,6 +57,16 @@ pub fn parse(file: FileId, tokens: Vec<Token>) -> (File, Vec<Diagnostic>) {
     (ast, p.diags)
 }
 
+/// Parses a stdlib declaration stub: like [`parse`], but generics, `where` bounds and
+/// bodiless functions are accepted (they are how the core library's API is written
+/// down; user code gets `not-supported-in-poc` for them).
+pub fn parse_stdlib(file: FileId, tokens: Vec<Token>) -> (File, Vec<Diagnostic>) {
+    let mut p = Parser::new(file, tokens);
+    p.stdlib = true;
+    let ast = p.file();
+    (ast, p.diags)
+}
+
 /// Lexes and parses one file. Lexical errors are returned without parsing, so a bad
 /// token does not cascade into syntax errors.
 pub fn parse_source(file: FileId, src: &str) -> (Option<File>, Vec<Diagnostic>) {
@@ -84,6 +94,8 @@ pub(crate) struct Parser {
     pub(crate) depth: usize,
     /// Whether `too-deeply-nested` was reported (once per file is enough).
     pub(crate) too_deep: bool,
+    /// Stdlib stub mode (see [`parse_stdlib`]).
+    pub(crate) stdlib: bool,
     /// Tokens rewritten by [`Parser::eat_close_angle`], with their original value,
     /// so a backtracking caller can restore them (see [`Parser::restore`]).
     splits: Vec<(usize, Token)>,
@@ -124,6 +136,7 @@ impl Parser {
             diags: Vec::new(),
             depth: 0,
             too_deep: false,
+            stdlib: false,
             splits: Vec::new(),
         }
     }
@@ -134,6 +147,7 @@ impl Parser {
         let mut sub = Parser::new(self.file, tokens);
         sub.depth = self.depth;
         sub.too_deep = self.too_deep;
+        sub.stdlib = self.stdlib;
         sub
     }
 

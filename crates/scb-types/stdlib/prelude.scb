@@ -1,0 +1,360 @@
+// The prelude: names visible in every file without `use` (SPEC "Lexical structure").
+// `namespace Prelude;` is special: these declarations live in the root namespace.
+//
+// Stdlib stubs are parsed in stdlib mode: generics, `where` bounds and bodiless
+// functions are allowed. A bodiless function or method is implemented natively by
+// the runtime (M7). Built-in types (`list`, `string`, `i8`, …) are declared as
+// classes only to give them methods and constants; the checker maps their names to
+// the built-in types themselves. The numeric types are generated in Rust
+// (`stdlib.rs`) because they differ only in names and limits.
+
+namespace Prelude;
+
+// ---------- operator interfaces ----------
+
+// `toString()` replaces PHP's `__toString` (SPEC "Structs, classes and interfaces").
+interface Stringable
+{
+    public function toString(): string;
+}
+
+// SPEC-OPEN: Q30 — the methods of Equatable, Hashable and Comparable are not
+// specified. `self` stands for the implementing type.
+interface Equatable
+{
+    public function equals($other: self): bool;
+}
+
+interface Hashable extends Equatable
+{
+    public function hash(): int;
+}
+
+interface Comparable
+{
+    // Negative, zero or positive, like `<=>`.
+    public function compareTo($other: self): int;
+}
+
+interface Iterable<out T>
+{
+}
+
+interface Callable
+{
+}
+
+interface Sendable
+{
+}
+
+interface Generator<out TYield, in TSend, out TReturn> extends Iterable<TYield>
+{
+}
+
+// Bounds for numeric conditional methods (`sum()`, `Math\mod`). Not visible to user
+// code (names starting with `__` are internal).
+interface __Numeric
+{
+}
+
+interface __Integer extends __Numeric
+{
+}
+
+// ---------- throwables (SPEC "Errors") ----------
+
+abstract class Throwable
+{
+    public function __construct($message: string = '', $code: int = 0, $previous: ?Throwable = null);
+
+    final public function getMessage(): string;
+
+    final public function getCode(): int;
+
+    final public function getPrevious(): ?Throwable;
+
+    final public function getFile(): string;
+
+    final public function getLine(): int;
+}
+
+extendable class Error extends Throwable
+{
+}
+
+extendable class Exception extends Throwable
+{
+}
+
+// SPEC-OPEN: Q34 — whether the specific throwables are extendable is not specified;
+// only `Error` and `Exception` are, for now.
+class OverflowError extends Error
+{
+}
+
+class CastError extends Error
+{
+}
+
+class DivisionByZeroError extends Error
+{
+}
+
+class IndexError extends Error
+{
+}
+
+class KeyError extends Error
+{
+}
+
+class BoundaryError extends Error
+{
+}
+
+class AssertionError extends Error
+{
+}
+
+class ExclusivityError extends Error
+{
+}
+
+class StaticInitError extends Error
+{
+}
+
+class ValueError extends Error
+{
+}
+
+class IoException extends Exception
+{
+}
+
+class ParseException extends Exception
+{
+}
+
+class EncodingException extends Exception
+{
+}
+
+// ---------- shared mutable state (SPEC "Closures and captured state") ----------
+
+class Ref<T>
+{
+    public function __construct(public $value: T) {}
+}
+
+// ---------- built-in types ----------
+
+class bool
+{
+}
+
+class string
+{
+    public function bytes(): bytes;
+
+    // SPEC-OPEN: Q31 — the view types of `codepoints()` / `graphemes()` are not
+    // specified; lists for now.
+    public function codepoints(): list<u32>;
+
+    public function graphemes(): list<string>;
+
+    public function byteLength(): int;
+
+    public function codepointLength(): int;
+
+    public function graphemeLength(): int;
+
+    public function contains($needle: string): bool;
+
+    public function startsWith($prefix: string): bool;
+
+    public function endsWith($suffix: string): bool;
+
+    public function find($needle: string, $offset: int = 0): ?int;
+
+    public function replace($needle: string, $replacement: string): string;
+
+    public function slice($r: Range<int>): string;
+
+    public function split($sep: string, $limit: int = -1): list<string>;
+
+    public function trim(): string;
+
+    public function trimStart(): string;
+
+    public function trimEnd(): string;
+
+    public function toUpper(): string;
+
+    public function toLower(): string;
+
+    public function repeat($n: int): string;
+
+    public function padStart($len: int, $pad: string = ' '): string;
+
+    public function padEnd($len: int, $pad: string = ' '): string;
+
+    public function isEmpty(): bool;
+}
+
+class bytes
+{
+    public function count(): int;
+
+    public function isEmpty(): bool;
+
+    public function slice($r: Range<int>): bytes;
+
+    public function concat($other: bytes): bytes;
+
+    public function decodeUtf8(): string;
+
+    public function tryDecodeUtf8(): ?string;
+}
+
+class list<T> implements Iterable<T>
+{
+    public function count(): int;
+
+    public function isEmpty(): bool;
+
+    public function get($i: int): ?T;
+
+    public function first(): ?T;
+
+    public function last(): ?T;
+
+    public function contains($v: T): bool where T of Equatable;
+
+    public function indexOf($v: T): ?int where T of Equatable;
+
+    public function slice($r: Range<int>): list<T>;
+
+    public mutating function push($v: T): void;
+
+    public mutating function pop(): ?T;
+
+    public mutating function insert($i: int, $v: T): void;
+
+    public mutating function removeAt($i: int): T;
+
+    public mutating function swap($i: int, $j: int): void;
+
+    public mutating function clear(): void;
+
+    public mutating function sort(): void where T of Comparable;
+
+    // SPEC-OPEN: Q32 — `sortBy($f)` could take a key selector or a comparator; a
+    // comparator (`<=>`-style result) for now.
+    public mutating function sortBy($f: fn(T, T): int): void;
+
+    public mutating function reverse(): void;
+
+    public function concat($other: list<T>): list<T>;
+
+    public function sorted(): list<T> where T of Comparable;
+
+    public function sortedBy($f: fn(T, T): int): list<T>;
+
+    public function reversed(): list<T>;
+
+    public function map<U>($f: fn(T): U): list<U>;
+
+    public function filter($f: fn(T): bool): list<T>;
+
+    public function reduce<A>($init: A, $f: fn(A, T): A): A;
+
+    public function chunk($size: int): list<list<T>>;
+
+    public function any($f: fn(T): bool): bool;
+
+    public function all($f: fn(T): bool): bool;
+
+    public function find($f: fn(T): bool): ?T;
+
+    public function findIndex($f: fn(T): bool): ?int;
+
+    public function each($f: fn(T): void): void;
+
+    public function join($sep: string): string where T of Stringable;
+
+    public function sum(): T where T of __Numeric;
+
+    public function min(): ?T where T of Comparable;
+
+    public function max(): ?T where T of Comparable;
+}
+
+class map<K of Hashable, V> implements Iterable<V>
+{
+    public function count(): int;
+
+    public function isEmpty(): bool;
+
+    public function has($k: K): bool;
+
+    public function get($k: K): ?V;
+
+    public function keys(): list<K>;
+
+    public function values(): list<V>;
+
+    public function entries(): list<tuple<K, V>>;
+
+    public mutating function remove($k: K): ?V;
+
+    public mutating function clear(): void;
+
+    public function merge($other: map<K, V>): map<K, V>;
+
+    // Map callbacks receive `($value, $key)` (SPEC "Core library", convention 5).
+    public function filter($f: fn(V, K): bool): map<K, V>;
+
+    public function mapValues<U>($f: fn(V, K): U): map<K, U>;
+
+    public function each($f: fn(V, K): void): void;
+
+    public function any($f: fn(V, K): bool): bool;
+
+    public function all($f: fn(V, K): bool): bool;
+}
+
+class set<T of Hashable> implements Iterable<T>
+{
+    public mutating function add($v: T): void;
+
+    public mutating function remove($v: T): void;
+
+    public function has($v: T): bool;
+
+    public function count(): int;
+
+    public function isEmpty(): bool;
+
+    public function values(): list<T>;
+
+    public function union($o: set<T>): set<T>;
+
+    public function intersect($o: set<T>): set<T>;
+
+    public function diff($o: set<T>): set<T>;
+}
+
+class Range<T> implements Iterable<T>
+{
+    public function contains($v: T): bool;
+
+    public function count(): int;
+
+    public function toList(): list<T>;
+
+    public function reversed(): Range<T>;
+
+    public function step($n: int): Range<T>;
+}

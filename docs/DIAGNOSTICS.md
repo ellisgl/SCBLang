@@ -91,3 +91,25 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `unresolved-name` | Name that does not resolve (including relative `Env\get` and `f16`) | Modules and packages |
 | `unsigned-negation` | Unary `-` on a non-literal unsigned value | Numerics |
 | `write-through-nullsafe` | Write or `inout` through `?->` | Nested mutation |
+| `abstract-method` | Abstract method outside an abstract class, or a non-interface method without a body | Structs, classes and interfaces |
+| `clone-value-type` | `clone` on a struct or enum (assignment already copies) | clone |
+| `default-method-conflict` | Two interface defaults for one method, not overridden by the class | Default-method conflicts |
+| `duplicate-declaration` | A type, function, constant, member or enum case declared twice | Modules and packages |
+| `extend-final` | Extending a class that is not `extendable` or `abstract` | Structs, classes and interfaces |
+| `incompatible-override` | Overriding method with different parameter types or an unrelated return type | Structs, classes and interfaces |
+| `inheritance-cycle` | A class that extends itself, directly or indirectly | Structs, classes and interfaces |
+| `inout-mismatch` | `inout` argument for a by-value parameter, or the reverse | Collections and values (`inout`) |
+| `invalid-break` | `break` / `continue` outside a loop, or with a depth larger than the loop nesting | Grammar sketch |
+| `invalid-main` | `main` with a signature other than the four allowed | Source files and program entry |
+| `missing-method` | Concrete class, struct or enum missing an abstract or interface method | Structs, classes and interfaces |
+| `missing-mutating` | Struct method changing `$this` without being `mutating` | Structs, classes and interfaces |
+| `missing-return` | A non-`void` function that can end without returning (or a `never` function that can return) | Type system |
+| `non-constant-expression` | Constant initializer or default value that is not a compile-time constant | Functions; Mutability |
+| `readonly-write` | Write to a `readonly` local, property or static outside its initialization, to a `const`, or to `$this`; `mutating` call on a readonly value | Mutability; Nested mutation |
+| `refutable-pattern` | Destructuring or `foreach` pattern that may not match | Destructuring outside match |
+| `static-call` | Instance method called statically, or static method called on an instance | Structs, classes and interfaces |
+| `unknown-member` | Property, method, constant or enum case that does not exist on the type | Structs, classes and interfaces |
+| `unsatisfied-bound` | A type lacking a required capability: `==` on a non-`Equatable` type, `<` on a non-`Comparable` one, a non-`Hashable` map key, a conditional method (`join`, `sort`, …) whose `where` bound fails | Equality and comparison; Generics |
+| `visibility` | Access to a private or protected member from outside where it is visible | Structs, classes and interfaces |
+| `wrong-arguments` | Missing, extra, unknown, duplicate or misplaced arguments | Functions |
+| `wrong-type-arguments` | Wrong number of type arguments (`list<int, int>`), or type arguments on a non-generic type | Type system |

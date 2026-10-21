@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: redundant-final
+
+namespace Conformance;
+
+struct Point
+{
+    public $x: int = 0;
+
+    final public function getX(): int
+    {
+        return $this->x;
+    }
+}
+
+function main(): void
+{
+}

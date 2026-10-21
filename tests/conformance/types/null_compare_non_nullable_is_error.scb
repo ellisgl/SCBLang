@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    if ($n != null) {
+        echo "always\n";
+    }
+}
