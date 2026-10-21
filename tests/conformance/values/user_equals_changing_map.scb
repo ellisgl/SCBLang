@@ -1,0 +1,36 @@
+// EXPECT-STDOUT:
+// | comparing
+// EXPECT-RUNTIME-ERROR: ExclusivityError
+// EXPECT-STDERR-CONTAINS: a map was changed while one of its keys was being compared
+namespace Conformance;
+
+// An `equals()` that changes the map whose key it is comparing: the write that
+// asked for the comparison finds its position gone and throws `ExclusivityError`.
+
+class Store
+{
+    public static $m: map<Key, int> = [];
+}
+
+class Key implements \Hashable
+{
+    public function __construct(public $n: int) {}
+
+    public function equals($other: self): bool
+    {
+        echo "comparing\n";
+        Store::$m->clear();
+        return $this->n == $other->n;
+    }
+
+    public function hash(): int
+    {
+        return 0;
+    }
+}
+
+function main(): void
+{
+    Store::$m[new Key(1)] = 1;
+    Store::$m[new Key(1)] = 2;
+}

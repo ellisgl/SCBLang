@@ -12,6 +12,11 @@
 //!   It restarts from a fresh handle at every object, so no `RefCell` borrow is held
 //!   while descending (a value that refers back to its own object would otherwise
 //!   be borrowed twice).
+//!
+//! A map key compared with user `equals()` (see `keys.rs`) cannot be looked up during
+//! the walk, which holds the map mutably: a write first finds those positions with a
+//! read-only pass ([`Interp::resolve_keys`]), and the walk checks that each position
+//! still holds the key found there.
 
 use std::rc::Rc;
 
@@ -21,7 +26,7 @@ use scb_types::tir::{Expr, IndexKind, LocalId, Place, PlaceRoot, Proj};
 
 use super::{Flow, Interp, R};
 use crate::isolate::StaticSlot;
-use crate::value::{ObjectValue, Value};
+use crate::value::{ObjectValue, OrderedMap, Value};
 
 /// An evaluated place: everything computed, ready to read or write.
 #[derive(Debug, Clone)]
@@ -43,7 +48,8 @@ pub(super) enum ERoot {
 pub(super) enum EProj {
     Field(u32),
     List(i64),
-    Map(Value, u64),
+    /// The key, its hash, and whether comparing it runs user code.
+    Map(Value, u64, bool),
     Bytes(i64),
     Tuple(u32),
     Push,
@@ -55,7 +61,16 @@ enum Fault {
     Key(Value),
     /// A projection that does not fit the value (an interpreter bug).
     Shape,
+    /// A map changed between finding a user key's position and using it (the user
+    /// `equals()` that found it changed the map).
+    Changed,
 }
+
+/// Per projection: for a map key compared with user code, where it was found (the
+/// position and the key there), or `None` if missing; `None` for other projections.
+/// The whole table is `None` when no key on the path needs user code (the usual
+/// case, which then costs nothing).
+type Resolved = Option<Vec<Option<Option<(usize, Value)>>>>;
 
 /// The result of walking one stretch of a path.
 enum Step<T> {
@@ -96,8 +111,13 @@ impl Interp<'_> {
             IndexKind::List => EProj::List(v.as_i64()),
             IndexKind::Bytes => EProj::Bytes(v.as_i64()),
             IndexKind::Map => {
-                let h = super::hash_value(&v);
-                EProj::Map(v, h)
+                let user = self.needs_user_key(&v);
+                let h = if user {
+                    self.key_hash(&v)?
+                } else {
+                    super::hash_value(&v)
+                };
+                EProj::Map(v, h, user)
             }
         })
     }
@@ -128,12 +148,10 @@ impl Interp<'_> {
                     Some(i) => Value::U8(b[i]),
                     None => return Err(self.fault(Fault::Index(*i, b.len()), ep.span)),
                 },
-                (EProj::Map(k, h), Value::Map(m)) => {
-                    match m.find(*h, k, &mut super::ops::values_equal) {
-                        Some(pos) => m.get(pos).expect("found").1.clone(),
-                        None => return Err(self.fault(Fault::Key(k.clone()), ep.span)),
-                    }
-                }
+                (EProj::Map(k, h, user), Value::Map(m)) => match self.lookup(m, *h, k, *user)? {
+                    Some(pos) => m.get(pos).expect("found").1.clone(),
+                    None => return Err(self.fault(Fault::Key(k.clone()), ep.span)),
+                },
                 _ => return Err(self.fault(Fault::Shape, ep.span)),
             };
             cur = next;
@@ -145,14 +163,15 @@ impl Interp<'_> {
     /// the last step must exist (SPEC "No autovivification"), and a list index must
     /// be in range: those trap as in any read.
     pub(crate) fn read_or_null(&mut self, ep: &EPlace) -> R<Value> {
-        let Some(EProj::Map(k, h)) = ep.path.last() else {
+        let Some(EProj::Map(k, h, user)) = ep.path.last() else {
             return self.read(ep);
         };
         let prefix = self.prefix(ep);
         let Value::Map(m) = self.read(&prefix)? else {
             return Err(self.fault(Fault::Shape, ep.span));
         };
-        Ok(m.find(*h, k, &mut super::ops::values_equal)
+        Ok(self
+            .lookup(&m, *h, k, *user)?
             .map_or(Value::Null, |pos| m.get(pos).expect("found").1.clone()))
     }
 
@@ -165,42 +184,94 @@ impl Interp<'_> {
     /// Stores `v` at a place: `[]` appends, a missing map key is inserted.
     pub(crate) fn assign(&mut self, ep: &EPlace, v: Value) -> R<()> {
         let mut v = Some(v);
+        let resolved = self.resolve_keys(ep)?;
         let fits = match ep.path.last() {
             Some(EProj::Push) => {
                 let prefix = self.prefix(ep);
-                self.modify(&prefix, &mut |list| match list {
+                self.modify_resolved(&prefix, &resolved, &mut |list| match list {
                     Value::List(l) => {
                         Rc::make_mut(l).push(v.take().expect("assigned once"));
-                        true
+                        Ok(())
                     }
-                    _ => false,
+                    _ => Err(Fault::Shape),
                 })?
             }
-            Some(EProj::Map(k, h)) => {
+            Some(EProj::Map(k, h, _)) => {
                 let (k, h) = (k.clone(), *h);
+                let found = resolved.as_ref().and_then(|r| r.last().cloned().flatten());
                 let prefix = self.prefix(ep);
-                self.modify(&prefix, &mut |map| match map {
+                self.modify_resolved(&prefix, &resolved, &mut |map| match map {
                     Value::Map(m) => {
-                        Rc::make_mut(m).insert(
-                            h,
-                            k.clone(),
-                            v.take().expect("assigned once"),
-                            &mut super::ops::values_equal,
-                        );
-                        true
+                        let pos = match &found {
+                            None => m.find(h, &k, &mut super::ops::values_equal),
+                            Some(found) => checked_position(m, h, found.as_ref())?,
+                        };
+                        let value = v.take().expect("assigned once");
+                        Rc::make_mut(m).insert_at(pos, h, k.clone(), value);
+                        Ok(())
                     }
-                    _ => false,
+                    _ => Err(Fault::Shape),
                 })?
             }
-            _ => self.modify(ep, &mut |slot| {
+            _ => self.modify_resolved(ep, &resolved, &mut |slot| {
                 *slot = v.take().expect("assigned once");
-                true
+                Ok(())
             })?,
         };
-        if fits {
-            Ok(())
+        fits.map_err(|f| self.fault(f, ep.span))
+    }
+
+    /// Positions of the map keys on `ep`'s path that are compared with user code
+    /// (see the module docs). Stops at the first step that cannot be taken; the walk
+    /// that follows reports it.
+    fn resolve_keys(&mut self, ep: &EPlace) -> R<Resolved> {
+        if !ep.path.iter().any(|p| matches!(p, EProj::Map(_, _, true))) {
+            return Ok(None);
+        }
+        let mut out = vec![None; ep.path.len()];
+        let mut cur = match &ep.root {
+            ERoot::Local(id) => self.local(*id).clone(),
+            ERoot::Static(sid) => self.static_value(*sid),
+            ERoot::Value(v) => v.clone(),
+        };
+        for (i, proj) in ep.path.iter().enumerate() {
+            let next = match (proj, &cur) {
+                (EProj::Field(f), Value::Struct(s)) => s.fields[*f as usize].clone(),
+                (EProj::Field(f), Value::Object(o)) => o.borrow().fields[*f as usize].clone(),
+                (EProj::Tuple(t), Value::Tuple(xs)) => xs[*t as usize].clone(),
+                (EProj::List(n), Value::List(l)) => match index_of(*n, l.len()) {
+                    Some(n) => l[n].clone(),
+                    None => break,
+                },
+                (EProj::Map(k, h, true), Value::Map(m)) => {
+                    let pos = self.key_find_hashed(m, *h, k)?;
+                    let entry = pos.map(|p| m.get(p).expect("found").clone());
+                    out[i] = Some(pos.zip(entry.as_ref().map(|e| e.0.clone())));
+                    match entry {
+                        Some((_, value)) => value,
+                        None => break,
+                    }
+                }
+                (EProj::Map(k, h, false), Value::Map(m)) => {
+                    match m.find(*h, k, &mut super::ops::values_equal) {
+                        Some(p) => m.get(p).expect("found").1.clone(),
+                        None => break,
+                    }
+                }
+                _ => break,
+            };
+            cur = next;
+        }
+        Ok(Some(out))
+    }
+
+    /// The position of a map key: structural, or with user code when the projection
+    /// says the key needs it (decided once, when the place was evaluated).
+    fn lookup(&mut self, m: &OrderedMap, h: u64, k: &Value, user: bool) -> R<Option<usize>> {
+        if user {
+            self.key_find_hashed(m, h, k)
         } else {
-            Err(self.fault(Fault::Shape, ep.span))
+            Ok(m.find(h, k, &mut super::ops::values_equal))
         }
     }
 
@@ -215,23 +286,40 @@ impl Interp<'_> {
     /// Applies `f` to the value at a place, making every value-typed level on the
     /// way unique first (copy-on-write).
     pub(crate) fn modify<T>(&mut self, ep: &EPlace, f: &mut dyn FnMut(&mut Value) -> T) -> R<T> {
+        let resolved = self.resolve_keys(ep)?;
+        let r = self.modify_resolved(ep, &resolved, &mut |v| Ok(f(v)))?;
+        r.map_err(|e| self.fault(e, ep.span))
+    }
+
+    /// [`Self::modify`] with the user-compared map keys already found. The leaf may
+    /// fail (a write that does not fit); that is returned, not raised.
+    fn modify_resolved<T>(
+        &mut self,
+        ep: &EPlace,
+        resolved: &Resolved,
+        f: &mut dyn FnMut(&mut Value) -> Result<T, Fault>,
+    ) -> R<Result<T, Fault>> {
         let mut f = Some(f);
         let mut leaf = |v: &mut Value| (f.take().expect("one leaf"))(v);
+        let walk = Walk {
+            path: &ep.path,
+            resolved,
+        };
         let step = match &ep.root {
             ERoot::Local(id) => {
                 let slot = &mut self.iso.frames.last_mut().expect("a frame").locals[id.0 as usize];
-                walk(slot, &ep.path, &mut leaf)
+                walk.from(slot, 0, &mut leaf)
             }
             ERoot::Static(sid) => {
                 self.check_static(*sid, ep.span)?;
                 let StaticSlot::Ready(slot) = &mut self.iso.statics[sid.0 as usize] else {
                     return Err(Flow::Fatal("static property not initialized".into()));
                 };
-                walk(slot, &ep.path, &mut leaf)
+                walk.from(slot, 0, &mut leaf)
             }
             ERoot::Value(v) => {
                 let mut v = v.clone();
-                walk(&mut v, &ep.path, &mut leaf)
+                walk.from(&mut v, 0, &mut leaf)
             }
         };
         let mut step = step.map_err(|e| self.fault(e, ep.span))?;
@@ -244,7 +332,7 @@ impl Interp<'_> {
                     };
                     self.check_field(&obj, i, ep.span)?;
                     let mut o = obj.borrow_mut();
-                    let r = walk_from(&mut o.fields[i as usize], &ep.path, at + 1, &mut leaf);
+                    let r = walk.from(&mut o.fields[i as usize], at + 1, &mut leaf);
                     drop(o);
                     step = r.map_err(|e| self.fault(e, ep.span))?;
                 }
@@ -264,6 +352,11 @@ impl Interp<'_> {
                 self.error("KeyError", format!("key {shown} not found"), span)
             }
             Fault::Shape => Flow::Fatal("internal error: a place does not match its value".into()),
+            Fault::Changed => self.error(
+                "ExclusivityError",
+                "a map was changed while one of its keys was being compared",
+                span,
+            ),
         }
     }
 
@@ -335,56 +428,81 @@ pub(crate) fn index_of(i: i64, len: usize) -> Option<usize> {
     usize::try_from(i).ok().filter(|&i| i < len)
 }
 
-fn walk<T>(
-    v: &mut Value,
-    path: &[EProj],
-    leaf: &mut dyn FnMut(&mut Value) -> T,
-) -> Result<Step<T>, Fault> {
-    walk_from(v, path, 0, leaf)
+/// The position for a user-compared key found by [`Interp::resolve_keys`], if the map
+/// still holds that key there (user code ran in between); `None` if it was missing.
+fn checked_position(
+    m: &crate::value::OrderedMap,
+    h: u64,
+    found: Option<&(usize, Value)>,
+) -> Result<Option<usize>, Fault> {
+    let Some((pos, key)) = found else {
+        return Ok(None);
+    };
+    let still =
+        m.hash_at(*pos) == Some(h) && super::ops::values_equal(&m.get(*pos).expect("live").0, key);
+    if still {
+        Ok(Some(*pos))
+    } else {
+        Err(Fault::Changed)
+    }
 }
 
-/// Walks `path[at..]` from `v`. Stops at a class instance (returning it) unless the
-/// path ends there.
-fn walk_from<T>(
-    v: &mut Value,
-    path: &[EProj],
-    at: usize,
-    leaf: &mut dyn FnMut(&mut Value) -> T,
-) -> Result<Step<T>, Fault> {
-    let Some(proj) = path.get(at) else {
-        return Ok(Step::Done(leaf(v)));
-    };
-    match (proj, v) {
-        (EProj::Field(_), Value::Object(o)) => Ok(Step::Object(o.clone(), at)),
-        (EProj::Field(i), Value::Struct(s)) => {
-            walk_from(&mut Rc::make_mut(s).fields[*i as usize], path, at + 1, leaf)
-        }
-        (EProj::Tuple(i), Value::Tuple(t)) => {
-            walk_from(&mut Rc::make_mut(t)[*i as usize], path, at + 1, leaf)
-        }
-        (EProj::List(i), Value::List(l)) => {
-            let len = l.len();
-            let i = index_of(*i, len).ok_or(Fault::Index(*i, len))?;
-            walk_from(&mut Rc::make_mut(l)[i], path, at + 1, leaf)
-        }
-        (EProj::Map(k, h), Value::Map(m)) => {
-            let pos = m
-                .find(*h, k, &mut super::ops::values_equal)
-                .ok_or_else(|| Fault::Key(k.clone()))?;
-            walk_from(Rc::make_mut(m).value_mut(pos), path, at + 1, leaf)
-        }
-        (EProj::Bytes(i), Value::Bytes(b)) => {
-            let len = b.len();
-            let i = index_of(*i, len).ok_or(Fault::Index(*i, len))?;
-            let bytes = Rc::make_mut(b);
-            let mut tmp = Value::U8(bytes[i]);
-            let r = walk_from(&mut tmp, path, at + 1, leaf)?;
-            if let Value::U8(x) = tmp {
-                bytes[i] = x;
+/// A write walk along a path (see the module docs).
+struct Walk<'p> {
+    path: &'p [EProj],
+    resolved: &'p Resolved,
+}
+
+impl Walk<'_> {
+    /// Walks `path[at..]` from `v`. Stops at a class instance (returning it) unless the
+    /// path ends there.
+    fn from<T>(
+        &self,
+        v: &mut Value,
+        at: usize,
+        leaf: &mut dyn FnMut(&mut Value) -> Result<T, Fault>,
+    ) -> Result<Step<Result<T, Fault>>, Fault> {
+        let Some(proj) = self.path.get(at) else {
+            return Ok(Step::Done(leaf(v)));
+        };
+        match (proj, v) {
+            (EProj::Field(_), Value::Object(o)) => Ok(Step::Object(o.clone(), at)),
+            (EProj::Field(i), Value::Struct(s)) => {
+                self.from(&mut Rc::make_mut(s).fields[*i as usize], at + 1, leaf)
             }
-            Ok(r)
+            (EProj::Tuple(i), Value::Tuple(t)) => {
+                self.from(&mut Rc::make_mut(t)[*i as usize], at + 1, leaf)
+            }
+            (EProj::List(i), Value::List(l)) => {
+                let len = l.len();
+                let i = index_of(*i, len).ok_or(Fault::Index(*i, len))?;
+                self.from(&mut Rc::make_mut(l)[i], at + 1, leaf)
+            }
+            (EProj::Map(k, h, _), Value::Map(m)) => {
+                let found = self
+                    .resolved
+                    .as_ref()
+                    .and_then(|r| r.get(at).cloned().flatten());
+                let pos = match found {
+                    None => m.find(*h, k, &mut super::ops::values_equal),
+                    Some(found) => checked_position(m, *h, found.as_ref())?,
+                }
+                .ok_or_else(|| Fault::Key(k.clone()))?;
+                self.from(Rc::make_mut(m).value_mut(pos), at + 1, leaf)
+            }
+            (EProj::Bytes(i), Value::Bytes(b)) => {
+                let len = b.len();
+                let i = index_of(*i, len).ok_or(Fault::Index(*i, len))?;
+                let bytes = Rc::make_mut(b);
+                let mut tmp = Value::U8(bytes[i]);
+                let r = self.from(&mut tmp, at + 1, leaf)?;
+                if let Value::U8(x) = tmp {
+                    bytes[i] = x;
+                }
+                Ok(r)
+            }
+            (EProj::Push, _) => Err(Fault::Shape),
+            _ => Err(Fault::Shape),
         }
-        (EProj::Push, _) => Err(Fault::Shape),
-        _ => Err(Fault::Shape),
     }
 }

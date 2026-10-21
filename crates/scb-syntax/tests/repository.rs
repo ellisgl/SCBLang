@@ -45,8 +45,6 @@ const SYNTAX_KINDS: &[&str] = &[
 /// resolution or class analysis (M3), so the parser must accept them.
 const CHECKER_CASES: &[&str] = &[
     "tests/conformance/poc_scope/callable_interface.scb",
-    "tests/conformance/poc_scope/user_hashable_key.scb",
-    "tests/conformance/poc_scope/user_hashable_nested_key.scb",
     "tests/conformance/objects/final_in_final_class_is_error.scb",
     "tests/conformance/objects/final_struct_method_is_error.scb",
 ];

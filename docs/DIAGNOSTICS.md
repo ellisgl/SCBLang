@@ -78,7 +78,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `namespace-mismatch` | Directory mode with differing namespaces | Modules and packages |
 | `non-bool-condition` | Condition (`if`, `while`, ternary, …) not of type `bool` | Type system |
 | `non-exhaustive-match` | `match` not covering every case (guarded arms do not count) | Enums and match |
-| `not-supported-in-poc` | Syntax of a feature outside POC scope; also a map key or set element type hashed by a user `hash()` | Implementation plan → POC scope |
+| `not-supported-in-poc` | Syntax of a feature outside POC scope | Implementation plan → POC scope |
 | `override-final` | Overriding a `final` method | Structs, classes and interfaces |
 | `prelude-name-redeclared` | Type, function or constant named after a prelude name | Lexical structure |
 | `redeclared-variable` | Declaring or binding a name that is still visible | Type system |

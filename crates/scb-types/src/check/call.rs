@@ -157,9 +157,12 @@ impl Ctx<'_> {
         }
         self.check_visibility(owner, vis, &format!("{}()", name.name), name.span);
         let callee = self.method_callee(mid, decl, recv_ty, name.span);
-        // A `mutating` method on a value type writes back through the receiver.
+        // A `mutating` method writes back through the receiver. Only value types
+        // declare them, and interfaces they implement: a receiver of interface type
+        // may hold a struct, so it is written back too (a class instance written back
+        // is the same reference).
         let receiver = match recv {
-            Recv::Place(p) if mutating && !self.is_class(recv_ty) => {
+            Recv::Place(p) if mutating => {
                 if has_nullsafe(object) {
                     self.report(
                         Diagnostic::new(
@@ -172,7 +175,7 @@ impl Ctx<'_> {
                 self.check_writable(&p, object.span);
                 Receiver::Place(p)
             }
-            Recv::Value(x) if mutating && !self.is_class(recv_ty) => {
+            Recv::Value(x) if mutating => {
                 let shown = self.show(recv_ty);
                 self.report(
                     Diagnostic::new(
@@ -946,9 +949,11 @@ impl Ctx<'_> {
                             .with_fix(format!("write `{owner}::{}(...)`", name.name)),
                     );
                 }
-                // The value would hold a copy of the receiver: calling it could
-                // only change that copy. SPEC-OPEN: Q44
-                if mutating && !self.is_class(recv.ty) {
+                // SPEC "Nested mutation": the value would hold a copy of the
+                // receiver, so calling it could only change that copy. Only value
+                // types have `mutating` methods (an interface's may be implemented
+                // by a struct), so any `mutating` method is rejected here.
+                if mutating {
                     self.report(
                         Diagnostic::new(
                             "mutating-temporary",

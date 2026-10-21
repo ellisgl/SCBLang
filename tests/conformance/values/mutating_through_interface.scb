@@ -1,0 +1,80 @@
+// EXPECT-STDOUT:
+// | 3
+// | 11
+// | 3 4 4 3
+// | 2 2
+namespace Conformance;
+
+// A `mutating` call through a receiver of interface type writes back: the value may
+// be a struct (copied on assignment), or a class instance (one shared reference).
+
+interface Bumpable
+{
+    public mutating function bump(): void;
+
+    public function get(): int;
+}
+
+struct Counter implements Bumpable
+{
+    public function __construct(public $n: int) {}
+
+    public mutating function bump(): void
+    {
+        $this->n++;
+    }
+
+    public function get(): int
+    {
+        return $this->n;
+    }
+}
+
+class Shared implements Bumpable
+{
+    public $n: int = 0;
+
+    public function bump(): void
+    {
+        $this->n++;
+    }
+
+    public function get(): int
+    {
+        return $this->n;
+    }
+}
+
+class Holder
+{
+    public function __construct(public $b: Bumpable) {}
+}
+
+function viaParam($b: Bumpable): int
+{
+    $b->bump();
+    return $b->get();
+}
+
+function main(): void
+{
+    $b: Bumpable = new Counter(1);
+    $b->bump();
+    $b->bump();
+    echo $b->get(), "\n";
+
+    $h: Holder = new Holder(new Counter(10));
+    $h->b->bump();
+    echo $h->b->get(), "\n";
+
+    $c: Bumpable = $b;
+    $c->bump();
+    echo $b->get(), ' ', $c->get(), ' ', viaParam($b), ' ', $b->get(), "\n";
+
+    $s: Shared = new Shared();
+    $i: Bumpable = $s;
+    $i->bump();
+    $hs: Holder = new Holder($s);
+    $hs->b->bump();
+    echo $s->get(), ' ', $i->get(), "\n";
+}

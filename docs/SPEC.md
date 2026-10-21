@@ -290,7 +290,7 @@ A write through a value path happens in place: `$order->lines[2]->qty += 1;` wal
 | Value-typed call result (`getLines()[0]->qty = 1`) | Compile error: mutating a temporary |
 | Through `?->` | Compile error |
 
-- `mutating` methods follow the same rule; calling one on a temporary is a compile error.
+- `mutating` methods follow the same rule; calling one on a temporary is a compile error. A `mutating` method of a value type cannot be used as a function value either (`$xs->push(...)`): the value would hold a copy of the receiver (`mutating-temporary`).
 - `inout` arguments follow the same rule: any writable place in this table is accepted (`inout $p->x`, `inout $list[$i]`, `inout $obj->prop`, `inout Foo::$count`), except the push form `L[]`.
 - A `readonly` value-typed level anywhere on the path makes the write a compile error. The path stops at a class reference: `$this->logger->level = 3` is fine even if `$logger` is `readonly`.
 - Writing through a hooked property is get → modify → set (one O(n) copy, since the `get` result is shared).
@@ -385,6 +385,7 @@ Auto-derivation (v1, built into the compiler, no generators):
 - A struct is automatically `Equatable` when every field is `Equatable`, and automatically `Hashable` when every field is `Hashable`.
 - A struct with a float field is auto-`Equatable` (IEEE semantics, NaN caveat applies) but never auto-`Hashable`; wrap the field in `Float\Key` if it must be a key.
 - An explicit `implements Equatable` / `Hashable` with its own methods overrides the derived version.
+- A struct or enum with its own `equals()` is not automatically `Hashable` (a derived hash would disagree with it); to be a key it implements `Hashable` itself.
 
 Derivation for other types:
 
@@ -579,6 +580,8 @@ A range whose start is past its end (`5..=1`, `0..=-1`) is empty: `count()` 0, i
 
 Range patterns in `match` are integer-only.
 
+Ranges are `Equatable`: two ranges are equal when they produce the same sequence of values, so all empty ranges are equal and `(0..<10)->step(20) == (0..=0)`. They are not `Hashable` or `Comparable`.
+
 ### Destructuring outside match
 
 Irrefutable patterns (tuples, structs) work in assignment and `foreach`:
@@ -674,6 +677,7 @@ Testing: `scb test` runs `#[Test]` functions in `tests/`; assertions come from `
 | `Process\exit` | Unwinds; locals destructed; statics destructed in reverse initialization order |
 | Static read after release | A destructor that runs at program end and reads a static already released throws `StaticInitError` (fatal, as it escapes a destructor) |
 | `Process\abort` | No destructors run |
+| Failed construction | No destructor runs for an object whose constructor or a property default threw or called `exit`: its properties may never have been assigned |
 
 ### Static initialization
 
@@ -1061,7 +1065,7 @@ POC scope:
   - Functions: named arguments, defaults, variadics and spread; `fn` closures; first-class callables (`foo(...)`, `$obj->m(...)`).
   - Structs with `mutating`, copy-on-write, nested mutation, `inout`.
   - Classes: single inheritance, `extendable`, `abstract`, `final` methods, constructor promotion, `readonly` (locals, properties, `readonly class`), static properties with lazy initialization and poisoning, runtime exclusivity checks, `clone` and clone-with, `__destruct`, cycle collector. `self::` and `parent::`.
-  - Interfaces with default methods; user `Equatable`, `Comparable`, `Stringable`.
+  - Interfaces with default methods; user `Equatable`, `Hashable`, `Comparable`, `Stringable`.
   - Pure, backed and data-carrying enums; `match` with patterns, guards, ranges and subjectless form; `instanceof` patterns; destructuring.
   - Exceptions and traps, `finally`, `exit` / `die`, `Process\exit`, `Process\abort`, `Process\name`, `assert`.
   - `const` (local, namespace, class); `internal` visibility (same as `public` within one module); magic constants; heredoc and nowdoc.

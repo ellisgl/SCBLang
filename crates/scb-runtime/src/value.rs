@@ -238,7 +238,54 @@ impl OrderedMap {
         value: Value,
         eq: &mut dyn FnMut(&Value, &Value) -> bool,
     ) -> Option<Value> {
-        if let Some(pos) = self.find(hash, &key, eq) {
+        let pos = self.find(hash, &key, eq);
+        self.insert_at(pos, hash, key, value)
+    }
+
+    pub fn remove(
+        &mut self,
+        hash: u64,
+        key: &Value,
+        eq: &mut dyn FnMut(&Value, &Value) -> bool,
+    ) -> Option<Value> {
+        let pos = self.find(hash, key, eq)?;
+        Some(self.remove_at(pos))
+    }
+
+    pub fn clear(&mut self) {
+        *self = OrderedMap::default();
+    }
+
+    /// Live positions whose key has `hash`, in insertion order. A copy, so the caller
+    /// can compare keys with code that may itself use the interpreter.
+    pub fn candidates(&self, hash: u64) -> Vec<usize> {
+        self.index.get(&hash).map_or_else(Vec::new, |slots| {
+            slots
+                .iter()
+                .copied()
+                .filter(|&i| self.entries[i].is_some())
+                .collect()
+        })
+    }
+
+    /// The hash stored for a live position.
+    pub fn hash_at(&self, pos: usize) -> Option<u64> {
+        self.entries
+            .get(pos)
+            .and_then(|e| e.as_ref())
+            .map(|_| self.hashes[pos])
+    }
+
+    /// Replaces the value at a live position (`Some`), or appends a new entry (`None`)
+    /// for a key the caller found missing. Returns the previous value.
+    pub fn insert_at(
+        &mut self,
+        pos: Option<usize>,
+        hash: u64,
+        key: Value,
+        value: Value,
+    ) -> Option<Value> {
+        if let Some(pos) = pos {
             return Some(std::mem::replace(self.value_mut(pos), value));
         }
         let pos = self.entries.len();
@@ -249,14 +296,10 @@ impl OrderedMap {
         None
     }
 
-    pub fn remove(
-        &mut self,
-        hash: u64,
-        key: &Value,
-        eq: &mut dyn FnMut(&Value, &Value) -> bool,
-    ) -> Option<Value> {
-        let pos = self.find(hash, key, eq)?;
-        let (_, v) = self.entries[pos].take().expect("found entries are live");
+    /// Removes the entry at a live position; returns its value.
+    pub fn remove_at(&mut self, pos: usize) -> Value {
+        let hash = self.hashes[pos];
+        let (_, v) = self.entries[pos].take().expect("a live entry");
         if let Some(slots) = self.index.get_mut(&hash) {
             slots.retain(|&i| i != pos);
             if slots.is_empty() {
@@ -267,11 +310,15 @@ impl OrderedMap {
         if self.entries.len() > 16 && self.len * 2 < self.entries.len() {
             self.compact();
         }
-        Some(v)
+        v
     }
 
-    pub fn clear(&mut self) {
-        *self = OrderedMap::default();
+    /// Live entries in insertion order, with their stored hashes.
+    pub fn iter_hashed(&self) -> impl Iterator<Item = (u64, &(Value, Value))> {
+        self.entries
+            .iter()
+            .zip(&self.hashes)
+            .filter_map(|(e, &h)| e.as_ref().map(|e| (h, e)))
     }
 
     /// Live entries in insertion order.

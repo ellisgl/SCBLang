@@ -17,10 +17,9 @@ use scb_types::ty::{IntTy, Ty, TyKind};
 use super::{Interp, R};
 use crate::value::{Value, format_float};
 
-/// Structural equality without user methods: what map keys and set elements use.
-/// This is exact for every key type the checker accepts: key types hashed by a user
-/// `hash()` are rejected (`not-supported-in-poc`), so no user method is needed here.
-/// Class instances compare by identity.
+/// Structural equality without user methods: what map keys and set elements use
+/// unless a user `Hashable` value is inside them (`keys.rs`). Class instances
+/// compare by identity.
 pub fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Null, Value::Null) => true,
@@ -39,7 +38,8 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
                         .is_some_and(|pos| values_equal(&y.get(pos).expect("found").1, v))
                 })
         }
-        (Value::Range(x), Value::Range(y)) => x == y,
+        // SPEC "Ranges": equal when they produce the same values.
+        (Value::Range(x), Value::Range(y)) => same_sequence(x, y),
         (Value::Struct(x), Value::Struct(y)) => {
             x.decl == y.decl
                 && x.fields
@@ -62,6 +62,12 @@ pub fn values_equal(a: &Value, b: &Value) -> bool {
             _ => false,
         },
     }
+}
+
+/// Whether two ranges produce the same values: the same count, and (when there are
+/// any) the same first value and (with two or more) the same step.
+fn same_sequence(x: &crate::value::RangeValue, y: &crate::value::RangeValue) -> bool {
+    x.count == y.count && (x.count == 0 || x.first == y.first) && (x.count < 2 || x.step == y.step)
 }
 
 /// A hash consistent with [`values_equal`]. Maps and sets hash order-independently.
@@ -92,7 +98,16 @@ fn hash_into(v: &Value, h: &mut impl Hasher) {
             });
             sum.hash(h);
         }
-        Value::Range(r) => (r.first, r.step, r.count).hash(h),
+        // Consistent with `same_sequence`: only what decides the values.
+        Value::Range(r) => {
+            r.count.hash(h);
+            if r.count > 0 {
+                r.first.hash(h);
+            }
+            if r.count > 1 {
+                r.step.hash(h);
+            }
+        }
         Value::Struct(s) => {
             s.decl.hash(h);
             for f in &s.fields {
@@ -335,13 +350,13 @@ impl Interp<'_> {
                 }
                 true
             }
-            // Keys match structurally; values compare with `==` (user `equals()`).
+            // Keys match as keys (`keys.rs`); values compare with `==`.
             (Value::Map(x), Value::Map(y)) => {
                 if x.len() != y.len() {
                     return Ok(false);
                 }
                 for (k, v) in x.iter() {
-                    let Some(pos) = y.find(hash_value(k), k, &mut values_equal) else {
+                    let Some(pos) = self.key_find(y, k)? else {
                         return Ok(false);
                     };
                     let w = y.get(pos).expect("found").1.clone();
@@ -357,6 +372,17 @@ impl Interp<'_> {
                 }
                 for (p, q) in x.payload.iter().zip(&y.payload) {
                     if !self.eq(p, q, span)? {
+                        return Ok(false);
+                    }
+                }
+                true
+            }
+            (Value::Set(x), Value::Set(y)) => {
+                if x.len() != y.len() {
+                    return Ok(false);
+                }
+                for (k, _) in x.iter() {
+                    if self.key_find(y, k)?.is_none() {
                         return Ok(false);
                     }
                 }

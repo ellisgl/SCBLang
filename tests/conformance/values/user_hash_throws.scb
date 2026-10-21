@@ -1,0 +1,47 @@
+// EXPECT-STDOUT:
+// | caught hash: 3
+// | unchanged 1
+// | caught equals
+// | still 1
+namespace Conformance;
+
+// A throwing `hash()` or `equals()` propagates like any throw; the map is left as
+// it was (the key is looked up before anything changes).
+
+class Key implements \Hashable
+{
+    public function __construct(public $n: int) {}
+
+    public function equals($other: self): bool
+    {
+        if ($other->n < 0) {
+            throw new \Exception('equals');
+        }
+        return $this->n == $other->n;
+    }
+
+    public function hash(): int
+    {
+        if ($this->n == 3) {
+            throw new \Exception('hash: 3');
+        }
+        return 0;
+    }
+}
+
+function main(): void
+{
+    $m: map<Key, int> = [new Key(1) => 1];
+    try {
+        $m[new Key(3)] = 3;
+    } catch ($e: \Exception) {
+        echo 'caught ', $e->getMessage(), "\n";
+    }
+    echo 'unchanged ', $m->count(), "\n";
+    try {
+        $m[new Key(-1)] = 3;
+    } catch (\Exception) {
+        echo "caught equals\n";
+    }
+    echo 'still ', $m->count(), "\n";
+}

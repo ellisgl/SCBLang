@@ -772,13 +772,22 @@ impl Ctx<'_> {
 
     /// Two modifying accesses overlap when they share a root local and one path is a
     /// prefix of the other; distinct fields or tuple elements are disjoint, any two
-    /// indexes may alias. Only locals are checked here (and only up to the first
-    /// class reference): class properties and statics are checked at runtime.
+    /// indexes may alias. Only storage of locals is checked here: once both paths
+    /// continue past a class reference (or a value of interface type), they reach
+    /// storage inside the shared object, which is checked at run time. A path that
+    /// ends at or before that point still names the local's own storage: `inout $obj`
+    /// overlaps `inout $obj` and `inout $obj->kid`.
     pub(crate) fn overlaps(&self, a: &Place, b: &Place) -> bool {
         let (PlaceRoot::Local(x), PlaceRoot::Local(y)) = (&a.root, &b.root) else {
             return false;
         };
-        if x != y || self.is_class(a.root_ty) {
+        if x != y {
+            return false;
+        }
+        let (la, lb) = (a.path.len(), b.path.len());
+        // `level` is the type before projection `i`.
+        let past_reference = |i: usize, level: Ty| self.is_class(level) && la > i && lb > i;
+        if past_reference(0, a.root_ty) {
             return false;
         }
         for (i, (p, q)) in a.path.iter().zip(&b.path).enumerate() {
@@ -787,7 +796,7 @@ impl Ctx<'_> {
                 (Proj::TupleField(i), Proj::TupleField(j)) if i != j => return false,
                 _ => {}
             }
-            if self.is_class(a.tys[i]) {
+            if past_reference(i + 1, a.tys[i]) {
                 return false;
             }
         }

@@ -1,0 +1,20 @@
+// EXPECT-COMPILE-ERROR: exclusivity-violation
+
+namespace Conformance;
+
+// `inout $x` moves the local's value out; `inout $x->kid` reaches through it.
+
+class Node
+{
+    public $kid: ?Node = null;
+}
+
+function two(inout $a: Node, inout $b: ?Node): void
+{
+}
+
+function main(): void
+{
+    $x: Node = new Node();
+    two(inout $x, inout $x->kid);
+}

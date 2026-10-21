@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "scb-cli"
-version = "0.1.0"
+version = "1.0.0-alpha"
 dependencies = [
  "scb-runtime",
  "scb-stdlib",
@@ -14,11 +14,11 @@ dependencies = [
 
 [[package]]
 name = "scb-conformance"
-version = "0.1.0"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "scb-runtime"
-version = "0.1.0"
+version = "1.0.0-alpha"
 dependencies = [
  "scb-syntax",
  "scb-types",
@@ -26,7 +26,7 @@ dependencies = [
 
 [[package]]
 name = "scb-stdlib"
-version = "0.1.0"
+version = "1.0.0-alpha"
 dependencies = [
  "scb-runtime",
  "scb-syntax",
@@ -36,11 +36,11 @@ dependencies = [
 
 [[package]]
 name = "scb-syntax"
-version = "0.1.0"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "scb-types"
-version = "0.1.0"
+version = "1.0.0-alpha"
 dependencies = [
  "scb-syntax",
 ]

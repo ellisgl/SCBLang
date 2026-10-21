@@ -1,0 +1,27 @@
+// EXPECT-COMPILE-ERROR: exclusivity-violation
+
+namespace Conformance;
+
+// A local of interface type may hold a struct: a `mutating` call on it cannot also
+// pass it `inout`.
+
+interface Bumpable
+{
+    public mutating function bumpWith(inout $other: Bumpable): void;
+}
+
+struct Counter implements Bumpable
+{
+    public function __construct(public $n: int) {}
+
+    public mutating function bumpWith(inout $other: Bumpable): void
+    {
+        $this->n++;
+    }
+}
+
+function main(): void
+{
+    $x: Bumpable = new Counter(1);
+    $x->bumpWith(inout $x);
+}

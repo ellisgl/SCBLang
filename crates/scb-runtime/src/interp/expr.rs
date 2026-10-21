@@ -44,12 +44,7 @@ impl Interp<'_> {
                 let mut m = OrderedMap::new();
                 for x in xs {
                     let v = self.eval(x)?;
-                    m.insert(
-                        super::hash_value(&v),
-                        v,
-                        Value::Null,
-                        &mut super::ops::values_equal,
-                    );
+                    self.map_insert(&mut m, v, Value::Null)?;
                 }
                 Value::Set(Rc::new(m))
             }
@@ -58,7 +53,7 @@ impl Interp<'_> {
                 for (k, v) in kvs {
                     let k = self.eval(k)?;
                     let v = self.eval(v)?;
-                    m.insert(super::hash_value(&k), k, v, &mut super::ops::values_equal);
+                    self.map_insert(&mut m, k, v)?;
                 }
                 Value::Map(Rc::new(m))
             }
@@ -700,8 +695,8 @@ impl Interp<'_> {
 }
 
 /// An instance whose construction failed (a default or the constructor threw) is
-/// never destructed: its destructor could read properties that were never assigned.
-/// SPEC-OPEN: Q45
+/// never destructed: its destructor could read properties that were never assigned
+/// (SPEC "Destructors": failed construction).
 fn unconstructed(obj: &Value) {
     if let Value::Object(o) = obj {
         o.borrow_mut().destructor = None;
