@@ -1,0 +1,49 @@
+// EXPECT-STDOUT:
+// | 11 4 3
+// | 104,195,169
+// | 104,233
+// | h|é|🇫🇷
+// | true true true false
+// | 2 null 4
+// | hEllo
+// | ll
+// | a|b|c a|b,c
+// | [x] [x ] [ x]
+// | ÉTÉ été
+// | ababab|
+// | ··x x··
+// | true false
+namespace Conformance;
+
+function o($v: ?int): string
+{
+    return $v == null ? 'null' : (string) $v;
+}
+
+function b($v: bool): string
+{
+    return $v ? 'true' : 'false';
+}
+
+function main(): void
+{
+    $s: string = "hé🇫🇷";
+    echo $s->byteLength(), ' ', $s->codepointLength(), ' ', $s->graphemeLength(), "\n";
+    $raw: list<string> = [];
+    foreach ("hé"->bytes() as $byte) {
+        $raw->push((string) $byte);
+    }
+    echo $raw->join(','), "\n";
+    echo "hé"->codepoints()->map(fn($c: u32): string => (string) $c)->join(','), "\n";
+    echo $s->graphemes()->join('|'), "\n";
+    echo b('hello'->contains('ell')), ' ', b('hello'->startsWith('he')), ' ', b('hello'->endsWith('lo')), ' ', b('hello'->contains('x')), "\n";
+    echo o('hello'->find('l')), ' ', o('hello'->find('z')), ' ', o('hello'->find('o', 3)), "\n";
+    echo 'hello'->replace('e', 'E'), "\n";
+    echo 'hello'->slice(2..<4), "\n";
+    echo 'a,b,c'->split(',')->join('|'), ' ', 'a,b,c'->split(',', 2)->join('|'), "\n";
+    echo '[', '  x  '->trim(), '] [', ' x '->trimStart(), '] [', ' x '->trimEnd(), "]\n";
+    echo 'été'->toUpper(), ' ', 'ÉTÉ'->toLower(), "\n";
+    echo 'ab'->repeat(3), '|', 'ab'->repeat(0), "\n";
+    echo 'x'->padStart(3, '·'), ' ', 'x'->padEnd(3, '·'), "\n";
+    echo b(''->isEmpty()), ' ', b('a'->isEmpty()), "\n";
+}

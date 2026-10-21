@@ -1,0 +1,96 @@
+// EXPECT-STDOUT:
+// | 26 words, 18 distinct
+// | the    5
+// | dog    2
+// | don't  2
+// | fox    2
+// | été    2
+// ARG: 5
+// STDIN:
+// | The quick brown fox jumps over the lazy dog.
+// | The dog sleeps; the fox does not!
+// | Été, été: summer — the café’s best.
+// | Don't stop. Don't.
+namespace Conformance;
+
+// Copy of examples/wordfreq/main.scb (M7 exit: a realistic program).
+
+// Word-frequency count: reads text from stdin, prints the most frequent words.
+//
+//     scb run examples/wordfreq/main.scb [top] < text.txt
+//
+// Words are runs of letters, digits and apostrophes, compared case-insensitively.
+// Ties are broken alphabetically, so the output is deterministic.
+
+struct Entry
+{
+    public function __construct(public $word: string, public $count: int) {}
+}
+
+/** Splits a line into lowercase words. */
+function words($line: string): list<string>
+{
+    $out: list<string> = [];
+    $current: string = '';
+    foreach ($line->toLower()->graphemes() as $g) {
+        if (isWordChar($g)) {
+            $current .= $g;
+        } elseif (!$current->isEmpty()) {
+            $out->push($current);
+            $current = '';
+        }
+    }
+    if (!$current->isEmpty()) {
+        $out->push($current);
+    }
+    return $out;
+}
+
+function isWordChar($g: string): bool
+{
+    if ($g == "'") {
+        return true;
+    }
+    // Anything that changes case is a letter; digits are listed.
+    return $g->toUpper() != $g->toLower() || '0123456789'->contains($g);
+}
+
+function main($args: list<string>): int
+{
+    $top: int = 10;
+    if (!$args->isEmpty()) {
+        $parsed: ?int = int::tryParse($args[0]);
+        if ($parsed == null || $parsed < 1) {
+            \Io\eprint("usage: wordfreq [top]  (top must be a positive integer)\n");
+            return 2;
+        }
+        $top = $parsed;
+    }
+
+    $counts: map<string, int> = [];
+    $total: int = 0;
+    while (true) {
+        $line: ?string = \Io\readLine();
+        if ($line == null) {
+            break;
+        }
+        foreach (words($line) as $w) {
+            $counts[$w] = ($counts->get($w) ?? 0) + 1;
+            $total++;
+        }
+    }
+
+    $entries: list<Entry> = $counts->entries()->map(fn($e: tuple<string, int>): Entry => new Entry($e[0], $e[1]));
+    $entries->sortBy(fn($a: Entry, $b: Entry): int => match {
+        $a->count != $b->count => $b->count <=> $a->count,
+        default => $a->word <=> $b->word,
+    });
+
+    echo "{$total} words, {$counts->count()} distinct\n";
+    $width: int = $entries->slice(0..<($top < $entries->count() ? $top : $entries->count()))
+        ->reduce(0, fn($w: int, $e: Entry): int => $e->word->graphemeLength() > $w ? $e->word->graphemeLength() : $w);
+    foreach ($entries->slice(0..<($top < $entries->count() ? $top : $entries->count())) as $e) {
+        echo $e->word->padEnd($width), '  ', $e->count, "\n";
+    }
+    return 0;
+}

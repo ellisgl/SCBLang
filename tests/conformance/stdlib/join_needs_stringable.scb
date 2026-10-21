@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: unsatisfied-bound
+namespace Conformance;
+
+function main(): void
+{
+    $l: list<bool> = [true];
+    echo $l->join(',');
+}

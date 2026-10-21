@@ -1,0 +1,89 @@
+// EXPECT-STDOUT:
+// | 3 false true
+// | 20 null 10 30 null
+// | true false 1 null
+// | 20,30
+// | 10,20,30,40
+// | 40 10,20,30
+// | 5,10,20,30
+// | 20 5,10,30
+// | 5,10,30
+// | 0
+// | 3,1,2
+// | 1,2,3
+// | 3,2,1
+// | 3,1,2,9
+// | 1,2,3 3,2,1 2,1,3
+// | 2,4,6 1,3 6
+// | 1,2|3,4|5
+// | true false 1 1 null
+// | each:3,1,2,
+// | 6 1 3
+// | 0 0.0 null
+// | 2.5
+namespace Conformance;
+
+function show($l: list<int>): string
+{
+    return $l->join(',');
+}
+
+function o($v: ?int): string
+{
+    return $v == null ? 'null' : (string) $v;
+}
+
+function b($v: bool): string
+{
+    return $v ? 'true' : 'false';
+}
+
+function main(): void
+{
+    $l: list<int> = [10, 20, 30];
+    $none: list<int> = [];
+    echo $l->count(), ' ', b($l->isEmpty()), ' ', b($none->isEmpty()), "\n";
+    echo o($l->get(1)), ' ', o($l->get(5)), ' ', o($l->first()), ' ', o($l->last()), ' ', o($l->get(-1)), "\n";
+    echo b($l->contains(20)), ' ', b($l->contains(99)), ' ', o($l->indexOf(20)), ' ', o($l->indexOf(99)), "\n";
+    echo show($l->slice(1..<3)), "\n";
+
+    $l->push(40);
+    echo show($l), "\n";
+    $p: ?int = $l->pop();
+    echo o($p), ' ', show($l), "\n";
+    $l->insert(0, 5);
+    echo show($l), "\n";
+    $r: int = $l->removeAt(2);
+    echo $r, ' ', show($l), "\n";
+    $l->swap(0, 2);
+    $l->reverse();
+    echo show($l), "\n";
+    $l->clear();
+    echo $l->count(), "\n";
+
+    $m: list<int> = [3, 1, 2];
+    echo show($m), "\n";
+    $m->sort();
+    echo show($m), "\n";
+    $m->sortBy(fn($a: int, $b: int): int => $b <=> $a);
+    echo show($m), "\n";
+
+    $n: list<int> = [3, 1, 2];
+    echo show($n->concat([9])), "\n";
+    echo show($n->sorted()), ' ', show($n->sortedBy(fn($a: int, $b: int): int => $b <=> $a)), ' ', show($n->reversed()), "\n";
+    echo show([1, 2, 3]->map(fn($x: int): int => $x * 2)), ' ', show([1, 2, 3]->filter(fn($x: int): bool => $x != 2)), ' ', [1, 2, 3]->reduce(0, fn($acc: int, $x: int): int => $acc + $x), "\n";
+    echo [1, 2, 3, 4, 5]->chunk(2)->map(fn($c: list<int>): string => show($c))->join('|'), "\n";
+    echo b($n->any(fn($x: int): bool => $x > 2)), ' ',
+        b($n->all(fn($x: int): bool => $x > 2)), ' ',
+        o($n->find(fn($x: int): bool => $x < 3)), ' ',
+        o($n->findIndex(fn($x: int): bool => $x == 1)), ' ',
+        o($n->find(fn($x: int): bool => $x > 9)), "\n";
+    echo 'each:';
+    $n->each(fn($x: int): void => \Io\print("{$x},"));
+    echo "\n";
+    echo $n->sum(), ' ', o($n->min()), ' ', o($n->max()), "\n";
+    $empty: list<int> = [];
+    $emptyF: list<f64> = [];
+    echo $empty->sum(), ' ', $emptyF->sum(), ' ', o($empty->min()), "\n";
+    echo [1.0, 1.5]->sum(), "\n";
+}

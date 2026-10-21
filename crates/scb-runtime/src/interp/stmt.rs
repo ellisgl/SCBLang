@@ -31,6 +31,9 @@ impl Interp<'_> {
             if self.iso.has_pending_destructors() {
                 self.run_destructors()?;
             }
+            if self.collection_due() {
+                self.collect_cycles()?;
+            }
         }
         Ok(())
     }

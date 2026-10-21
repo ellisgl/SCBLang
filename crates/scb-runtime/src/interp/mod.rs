@@ -26,6 +26,7 @@
 //! writing places, copy-on-write), `ops` (arithmetic, conversions, equality,
 //! ordering, hashing), `pattern` (patterns and runtime type tests).
 
+mod cycles;
 mod destruct;
 mod exclusive;
 mod expr;
@@ -123,24 +124,20 @@ impl<'a> Interp<'a> {
     /// stack) starts fresh, so an isolate reused for another run or another program
     /// never sees stale values.
     pub fn new(iso: &'a mut Isolate, program: &'a Program) -> Self {
+        // What an earlier run left is freed without its destructors.
+        iso.free_leftovers();
         iso.statics = program.statics.iter().map(|_| StaticSlot::Uninit).collect();
         iso.consts = program.consts.iter().map(|_| None).collect();
         iso.vtables.clear();
         iso.destructors.clear();
         iso.static_order.clear();
-        iso.exclusive.clear();
-        iso.frames.clear();
         iso.calls.clear();
         iso.ret_hint = None;
         iso.destruct_floor = 0;
-        // Objects queued by an earlier run are freed without their destructors.
-        loop {
-            let stale = std::mem::take(&mut *iso.destruct_queue.borrow_mut());
-            if stale.is_empty() {
-                break;
-            }
-            drop(stale);
-        }
+        iso.gc_prune_at = cycles::MIN_THRESHOLD;
+        iso.gc_created = 0;
+        iso.gc_threshold = cycles::MIN_THRESHOLD;
+        iso.gc_running = false;
         Interp { iso, program }
     }
 
@@ -490,7 +487,7 @@ impl<'a> Interp<'a> {
         let n = self.program.decls.ty(decl).fields.len();
         let (file, line) = self.position(span);
         let trace = self.trace(span);
-        Value::Object(Rc::new(std::cell::RefCell::new(ObjectValue::new(
+        let v = Value::Object(Rc::new(std::cell::RefCell::new(ObjectValue::new(
             decl,
             vec![Value::Null; n],
             Some(NativeState::Throwable(ThrowableState {
@@ -501,7 +498,9 @@ impl<'a> Interp<'a> {
                 line,
                 trace,
             })),
-        ))))
+        ))));
+        self.track(&v);
+        v
     }
 
     pub fn position(&self, span: Span) -> (String, i64) {
@@ -566,12 +565,21 @@ impl<'a> Interp<'a> {
         // throwable they follow its trace (in `finish`).
         let result = match result {
             Err(Flow::Abort | Flow::Fatal(_) | Flow::Throw(..)) => result,
-            _ => match self.run_destructors().and_then(|()| self.release_statics()) {
+            _ => match self.end_of_program() {
                 Ok(()) => result,
                 Err(fatal) => Err(fatal),
             },
         };
         self.finish(result)
+    }
+
+    /// Program end: pending destructors, unreachable cycles, then the statics and
+    /// the cycles only they kept alive.
+    fn end_of_program(&mut self) -> R<()> {
+        self.run_destructors()?;
+        self.collect_cycles()?;
+        self.release_statics()?;
+        self.collect_cycles()
     }
 
     /// Flushes stdout and turns the outcome of `main` into an exit code, printing an
@@ -602,7 +610,7 @@ impl<'a> Interp<'a> {
                 let _ = self.iso.write_stderr(text.as_bytes());
                 drop(e);
                 // The statics go after the trace (SPEC "Destructors").
-                let teardown = self.run_destructors().and_then(|()| self.release_statics());
+                let teardown = self.end_of_program();
                 let _ = self.iso.flush_stdout();
                 if let Err(Flow::Fatal(msg)) = teardown {
                     let _ = self

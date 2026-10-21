@@ -1,0 +1,48 @@
+// EXPECT-STDOUT:
+// | 44 -128 127 0 null 100
+// | 42 -7 null null
+// | -126 127 null 6
+// | 0 255 null 4
+// | 1 0 -128 -128 64
+// | 3 3 2 -3 2
+// | 1.5 null 2.5 null true false
+// | -2 1 2 -1
+namespace Conformance;
+
+function o($v: ?int): string
+{
+    return $v == null ? 'null' : (string) $v;
+}
+
+function oi8($v: ?i8): string
+{
+    return $v == null ? 'null' : (string) $v;
+}
+
+function ou8($v: ?u8): string
+{
+    return $v == null ? 'null' : (string) $v;
+}
+
+function of($v: ?f64): string
+{
+    return $v == null ? 'null' : (string) $v;
+}
+
+function main(): void
+{
+    echo i8::wrap(300), ' ', i8::saturate(-1000), ' ', i8::saturate(1000), ' ', u8::wrap(256), ' ', oi8(i8::tryFrom(200)), ' ', oi8(i8::tryFrom(100)), "\n";
+    echo int::parse('42'), ' ', int::parse('-7'), ' ', o(int::tryParse('4x')), ' ', oi8(i8::tryParse('200')), "\n";
+    $a: i8 = 127;
+    $b: i8 = 3;
+    echo i8::wrappingAdd($a, $b), ' ', i8::saturatingAdd($a, $b), ' ', oi8(i8::checkedAdd($a, $b)), ' ', oi8(i8::checkedSub($b, -3)), "\n";
+    $z: u8 = 0;
+    $one: u8 = 1;
+    echo u8::saturatingSub($z, $one), ' ', u8::wrappingSub($z, $one), ' ', ou8(u8::checkedSub($z, $one)), ' ', u8::wrappingMul(130, 2), "\n";
+    $m: i8 = -128;
+    echo i8::wrappingPow(3, 4) == 81 ? 1 : 0, ' ', o(int::checkedPow(2, 63)) == 'null' ? 0 : 1, ' ', i8::wrappingNeg($m), ' ', i8::wrappingShl(1, 7), ' ', i8::wrappingShr(-128, 1) == -64 ? 64 : 0, "\n";
+    echo int::round(2.5, \Math\Rounding::HALF_UP), ' ', int::round(2.5, \Math\Rounding::CEIL), ' ', int::round(2.5, \Math\Rounding::FLOOR), ' ', int::round(-2.5, \Math\Rounding::HALF_UP), ' ', int::round(2.5, \Math\Rounding::TRUNCATE), "\n";
+    $nan: f64 = 0.0 / 0.0;
+    echo f64::parse('1.5'), ' ', of(f64::tryParse('x')), ' ', of(f64::exactFrom(2)) == '2.0' ? '2.5' : 'bad', ' ', of(f64::exactFrom(9007199254740993)), ' ', f64::isNan($nan) ? 'true' : 'false', ' ', f64::isNan(1.0) ? 'true' : 'false', "\n";
+    echo \Math\floorDiv(-7, 4), ' ', \Math\mod(-7, 4), ' ', \Math\floorDiv(7, 4) + 1, ' ', \Math\mod(7, -4), "\n";
+}

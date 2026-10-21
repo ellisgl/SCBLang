@@ -1,0 +1,39 @@
+// EXPECT-STDOUT:
+// | collected during the run: yes
+// | live pair intact: 7 7
+namespace Conformance;
+
+// 30 000 unreachable two-object cycles: the collector must free (and destruct)
+// most of them while the loop runs, not only at program end. A cycle that is
+// still referenced from a local must survive every collection.
+class Node
+{
+    public static $destructed: int = 0;
+    public $other: ?Node = null;
+
+    public function __construct(public $value: int) {}
+
+    public function __destruct()
+    {
+        Node::$destructed++;
+    }
+}
+
+function pair($v: int): Node
+{
+    $a: Node = new Node($v);
+    $b: Node = new Node($v);
+    $a->other = $b;
+    $b->other = $a;
+    return $a;
+}
+
+function main(): void
+{
+    $kept: Node = pair(7);
+    for ($i: int = 0; $i < 30000; $i++) {
+        pair($i);
+    }
+    echo 'collected during the run: ', Node::$destructed > 30000 ? 'yes' : 'no', "\n";
+    echo 'live pair intact: ', $kept->value, ' ', $kept->other?->other?->value ?? -1, "\n";
+}

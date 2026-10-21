@@ -9,9 +9,8 @@
 //! are destructed in reverse declaration order (that is the order the block
 //! releases them in).
 //!
-//! A destructor that throws or calls `exit` is fatal: no further unwinding. The
-//! cycle collector is not implemented yet: objects in a reference cycle are never
-//! destructed (M7).
+//! A destructor that throws or calls `exit` is fatal: no further unwinding.
+//! Objects in reference cycles are destructed by the cycle collector (`cycles.rs`).
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -64,48 +63,62 @@ impl Interp<'_> {
                 }
                 q.remove(floor).expect("checked the length")
             };
-            let Some(func) = self.destructor_of(obj.decl) else {
-                continue;
-            };
-            let span = self.program.funcs[func.0 as usize].span;
-            let this = Value::Object(Rc::new(RefCell::new(obj)));
-            // Objects this destructor releases queue above everything pending now.
-            let inner = self.iso.destruct_queue.borrow().len();
-            self.iso.destruct_floor = inner;
-            let (r, end) = self.call_func(func, Some(this), Vec::new(), &[], span);
-            // `$this` goes now: its fields are released, which may queue more. Those
-            // are part of this object's destruction, so they go to the front, ahead
-            // of what was pending before (a loop, not recursion: a long chain of
-            // objects cannot exhaust the stack).
-            drop(end);
-            {
-                let mut q = self.iso.destruct_queue.borrow_mut();
-                let from = inner.min(q.len());
-                let released: Vec<_> = q.drain(from..).collect();
-                for (k, o) in released.into_iter().enumerate() {
-                    q.insert(floor + k, o);
-                }
+            let decl = obj.decl;
+            let this = Rc::new(RefCell::new(obj));
+            let handle = Rc::downgrade(&this);
+            self.call_destructor(decl, Value::Object(this))?;
+            // Resurrected: the object is back in the collector's care.
+            if handle.strong_count() > 0 {
+                self.register(handle);
             }
-            self.iso.destruct_floor = floor;
-            match r {
-                Ok(_) | Err(Flow::Return(_) | Flow::Break(_) | Flow::Continue(_)) => {}
-                Err(Flow::Throw(e, _)) => {
-                    let name = &self.program.funcs[func.0 as usize].name;
-                    let trace = self.describe_throwable(&e, "Uncaught");
-                    return Err(Flow::Fatal(format!(
-                        "a throwable escaped `{name}`\n{}",
-                        trace.trim_end()
-                    )));
-                }
-                Err(Flow::Exit(code, at)) => {
-                    let name = &self.program.funcs[func.0 as usize].name;
-                    let (file, line) = self.position(at);
-                    return Err(Flow::Fatal(format!(
-                        "exit({code}) called in `{name}` at {file}:{line}"
-                    )));
-                }
-                Err(e @ (Flow::Fatal(_) | Flow::Abort)) => return Err(e),
+        }
+    }
+
+    /// Runs `decl`'s destructor on `this` (an object whose last outside reference
+    /// is gone). Objects it releases are destructed inside it; its fields' objects
+    /// follow it directly. A throw or `exit` escaping it is fatal.
+    pub(crate) fn call_destructor(&mut self, decl: DeclId, this: Value) -> R<()> {
+        let Some(func) = self.destructor_of(decl) else {
+            return Ok(());
+        };
+        let floor = self.iso.destruct_floor;
+        let span = self.program.funcs[func.0 as usize].span;
+        // Objects this destructor releases queue above everything pending now.
+        let inner = self.iso.destruct_queue.borrow().len();
+        self.iso.destruct_floor = inner;
+        let (r, end) = self.call_func(func, Some(this), Vec::new(), &[], span);
+        // `$this` goes now: its fields are released, which may queue more. Those
+        // are part of this object's destruction, so they go to the front, ahead
+        // of what was pending before (a loop, not recursion: a long chain of
+        // objects cannot exhaust the stack).
+        drop(end);
+        {
+            let mut q = self.iso.destruct_queue.borrow_mut();
+            let from = inner.min(q.len());
+            let released: Vec<_> = q.drain(from..).collect();
+            for (k, o) in released.into_iter().enumerate() {
+                q.insert(floor + k, o);
             }
+        }
+        self.iso.destruct_floor = floor;
+        match r {
+            Ok(_) | Err(Flow::Return(_) | Flow::Break(_) | Flow::Continue(_)) => Ok(()),
+            Err(Flow::Throw(e, _)) => {
+                let name = &self.program.funcs[func.0 as usize].name;
+                let trace = self.describe_throwable(&e, "Uncaught");
+                Err(Flow::Fatal(format!(
+                    "a throwable escaped `{name}`\n{}",
+                    trace.trim_end()
+                )))
+            }
+            Err(Flow::Exit(code, at)) => {
+                let name = &self.program.funcs[func.0 as usize].name;
+                let (file, line) = self.position(at);
+                Err(Flow::Fatal(format!(
+                    "exit({code}) called in `{name}` at {file}:{line}"
+                )))
+            }
+            Err(e @ (Flow::Fatal(_) | Flow::Abort)) => Err(e),
         }
     }
 

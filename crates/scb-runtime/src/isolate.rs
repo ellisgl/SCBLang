@@ -5,8 +5,10 @@
 //! only through the isolate's methods. This is what lets a server run many isolates
 //! side by side with different stdin/stdout/env and no shared state.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufWriter, Read, Write};
+use std::rc::Weak;
 use std::sync::Arc;
 
 use scb_syntax::Span;
@@ -15,7 +17,7 @@ use scb_types::decls::{DeclId, StaticId};
 use scb_types::tir::FuncId;
 
 use crate::interp::{Exclusive, Interp, Natives};
-use crate::value::{DestructQueue, Value};
+use crate::value::{DestructQueue, ObjectValue, Value};
 
 /// Stdout buffer size (SPEC: "size implementation-defined").
 const STDOUT_BUFFER: usize = 8 * 1024;
@@ -105,6 +107,16 @@ pub struct Isolate {
     /// "Exclusivity"), with the id that ends each.
     pub(crate) exclusive: Vec<(u64, Exclusive)>,
     pub(crate) next_access: u64,
+    /// Every class instance created and not yet found dead (the cycle collector's
+    /// starting points), and the length at which dead entries are pruned.
+    pub(crate) objects: Vec<Weak<RefCell<ObjectValue>>>,
+    pub(crate) gc_prune_at: usize,
+    /// Objects created since the last collection, and the count that triggers
+    /// the next one.
+    pub(crate) gc_created: usize,
+    pub(crate) gc_threshold: usize,
+    /// A collection is running (its destructors do not start another).
+    pub(crate) gc_running: bool,
     /// `Process\name()`.
     program_name: String,
 }
@@ -135,6 +147,11 @@ impl Isolate {
             static_order: Vec::new(),
             exclusive: Vec::new(),
             next_access: 0,
+            objects: Vec::new(),
+            gc_prune_at: 0,
+            gc_created: 0,
+            gc_threshold: usize::MAX,
+            gc_running: false,
             program_name: "scb".into(),
         }
     }
@@ -206,15 +223,27 @@ impl Isolate {
     }
 }
 
-impl Drop for Isolate {
-    /// Frees what is left without running destructors (after `Process\abort()`, or
-    /// objects still queued). Queued objects hold handles to the queue itself, so
-    /// it is emptied explicitly; dropping them can queue more, hence the loop.
-    fn drop(&mut self) {
+impl Isolate {
+    /// Frees what an earlier run left without running destructors (after
+    /// `Process\abort()` or a fatal error, objects still queued, cycles). Queued
+    /// objects hold handles to the queue itself, so it is emptied explicitly;
+    /// dropping them can queue more, hence the loop.
+    pub(crate) fn free_leftovers(&mut self) {
         self.statics.clear();
         self.consts.clear();
         self.frames.clear();
         self.exclusive.clear();
+        // Objects still alive are in cycles: clear them so they are freed.
+        let live: Vec<_> = self.objects.drain(..).filter_map(|w| w.upgrade()).collect();
+        let mut released = Vec::new();
+        for o in &live {
+            if let Ok(mut o) = o.try_borrow_mut() {
+                o.destructor = None;
+                released.push((std::mem::take(&mut o.fields), o.native.take()));
+            }
+        }
+        drop(released);
+        drop(live);
         loop {
             let pending = std::mem::take(&mut *self.destruct_queue.borrow_mut());
             if pending.is_empty() {
@@ -222,6 +251,12 @@ impl Drop for Isolate {
             }
             drop(pending);
         }
+    }
+}
+
+impl Drop for Isolate {
+    fn drop(&mut self) {
+        self.free_leftovers();
     }
 }
 

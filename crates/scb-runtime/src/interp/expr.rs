@@ -266,6 +266,7 @@ impl Interp<'_> {
                     }
                 };
                 let mut out = Value::Object(Rc::new(RefCell::new(copy)));
+                self.track(&out);
                 for (idx, x) in with {
                     let v = self.eval(x)?;
                     super::set_field(&mut out, *idx, v);
@@ -618,6 +619,7 @@ impl Interp<'_> {
                 destructor: self.destructor_queue(class),
             })))
         };
+        self.track(&obj);
         for a in program.decls.ancestors(class).into_iter().rev() {
             for (idx, init) in &program.field_defaults[a.0 as usize] {
                 match self.eval_init(init) {

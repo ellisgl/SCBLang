@@ -1,0 +1,132 @@
+// EXPECT-STDOUT:
+// | IndexError: removeAt
+// | IndexError: insert
+// | IndexError: swap
+// | ValueError: chunk
+// | ValueError: split separator
+// | ValueError: split limit
+// | ValueError: padStart
+// | ValueError: step
+// | IndexError: slice
+// | ValueError: slice step
+// | BoundaryError: slice
+// | IndexError: find offset
+// | BoundaryError: find offset
+// | ParseException: parse
+// | EncodingException: decodeUtf8
+// | DivisionByZeroError: floorDiv
+// | OverflowError: sum
+// | CastError: round
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        $l: list<int> = [1]; $l->removeAt(1);
+        echo "no error: removeAt\n";
+    } catch (\IndexError) {
+        echo "IndexError: removeAt\n";
+    }
+    try {
+        $l: list<int> = [1]; $l->insert(2, 5);
+        echo "no error: insert\n";
+    } catch (\IndexError) {
+        echo "IndexError: insert\n";
+    }
+    try {
+        $l: list<int> = [1]; $l->swap(0, 1);
+        echo "no error: swap\n";
+    } catch (\IndexError) {
+        echo "IndexError: swap\n";
+    }
+    try {
+        $c: list<list<int>> = [1]->chunk(0);
+        echo "no error: chunk\n";
+    } catch (\ValueError) {
+        echo "ValueError: chunk\n";
+    }
+    try {
+        $p: list<string> = 'a'->split('');
+        echo "no error: split separator\n";
+    } catch (\ValueError) {
+        echo "ValueError: split separator\n";
+    }
+    try {
+        $p: list<string> = 'a'->split(',', 0);
+        echo "no error: split limit\n";
+    } catch (\ValueError) {
+        echo "ValueError: split limit\n";
+    }
+    try {
+        $p: string = 'a'->padStart(3, '');
+        echo "no error: padStart\n";
+    } catch (\ValueError) {
+        echo "ValueError: padStart\n";
+    }
+    try {
+        $r: Range<int> = (1..=3)->step(0);
+        echo "no error: step\n";
+    } catch (\ValueError) {
+        echo "ValueError: step\n";
+    }
+    try {
+        $s: list<int> = [1]->slice(0..<2);
+        echo "no error: slice\n";
+    } catch (\IndexError) {
+        echo "IndexError: slice\n";
+    }
+    try {
+        $s: list<int> = [1, 2, 3]->slice((0..<3)->step(2));
+        echo "no error: slice step\n";
+    } catch (\ValueError) {
+        echo "ValueError: slice step\n";
+    }
+    try {
+        $s: string = 'é'->slice(0..<1);
+        echo "no error: slice\n";
+    } catch (\BoundaryError) {
+        echo "BoundaryError: slice\n";
+    }
+    try {
+        $f: ?int = 'ab'->find('a', 3);
+        echo "no error: find offset\n";
+    } catch (\IndexError) {
+        echo "IndexError: find offset\n";
+    }
+    try {
+        $f: ?int = 'é'->find('a', 1);
+        echo "no error: find offset\n";
+    } catch (\BoundaryError) {
+        echo "BoundaryError: find offset\n";
+    }
+    try {
+        $n: int = int::parse(' 1');
+        echo "no error: parse\n";
+    } catch (\ParseException) {
+        echo "ParseException: parse\n";
+    }
+    try {
+        $s: string = 'é'->bytes()->slice(0..<1)->decodeUtf8();
+        echo "no error: decodeUtf8\n";
+    } catch (\EncodingException) {
+        echo "EncodingException: decodeUtf8\n";
+    }
+    try {
+        $n: int = \Math\floorDiv(1, 0);
+        echo "no error: floorDiv\n";
+    } catch (\DivisionByZeroError) {
+        echo "DivisionByZeroError: floorDiv\n";
+    }
+    try {
+        $l: list<i8> = [100, 100]; $n: i8 = $l->sum();
+        echo "no error: sum\n";
+    } catch (\OverflowError) {
+        echo "OverflowError: sum\n";
+    }
+    try {
+        $n: i8 = i8::round(1000.0, \Math\Rounding::HALF_UP);
+        echo "no error: round\n";
+    } catch (\CastError) {
+        echo "CastError: round\n";
+    }
+}

@@ -1,0 +1,44 @@
+// EXPECT-STDOUT:
+// | made
+// | ~a
+// | still here: a
+// | end
+namespace Conformance;
+
+class Keeper
+{
+    public static $saved: list<Node> = [];
+}
+
+class Node
+{
+    public $next: ?Node = null;
+
+    public function __construct(public $name: string) {}
+
+    public function __destruct()
+    {
+        echo '~', $this->name, "\n";
+        Keeper::$saved->push($this);
+    }
+}
+
+function make(): void
+{
+    $a: Node = new Node('a');
+    $a->next = $a;
+}
+
+class Filler {}
+
+function main(): void
+{
+    make();
+    echo "made\n";
+    // Enough allocations to trigger a collection during the run.
+    for ($i: int = 0; $i < 20000; $i++) {
+        $f: Filler = new Filler();
+    }
+    echo 'still here: ', Keeper::$saved[0]->name, "\n";
+    echo "end\n";
+}

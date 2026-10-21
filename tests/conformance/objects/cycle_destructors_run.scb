@@ -1,4 +1,3 @@
-// SKIP: cycle collector not implemented yet (M5 stub leaks cycles; required by M7)
 // EXPECT-STDOUT:
 // | made
 // | ~node

@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: unsatisfied-bound
+namespace Conformance;
+
+class Plain {}
+
+function main(): void
+{
+    $l: list<Plain> = [new Plain()];
+    $l->sort();
+}

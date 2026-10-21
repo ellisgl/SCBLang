@@ -1,0 +1,69 @@
+// EXPECT-STDOUT:
+// | made
+// | ~parent
+// | ~late sees child
+// | collected
+// | end
+namespace Conformance;
+
+// A destructor run by the collector creates a new unreachable cycle that
+// references an object of the cycle being collected. That object must stay intact
+// until the new cycle's destructor has run.
+
+class Child
+{
+    public $parent: ?Parent = null;
+
+    public function __construct(public $name: string) {}
+}
+
+class Late
+{
+    public $self: ?Late = null;
+
+    public function __construct(public $child: Child) {}
+
+    public function __destruct()
+    {
+        echo '~late sees ', $this->child->name, "\n";
+    }
+}
+
+class Parent
+{
+    public $child: ?Child = null;
+
+    public function __destruct()
+    {
+        echo "~parent\n";
+        $c: ?Child = $this->child;
+        if ($c != null) {
+            $l: Late = new Late($c);
+            $l->self = $l;
+        }
+    }
+}
+
+function make(): void
+{
+    $p: Parent = new Parent();
+    $c: Child = new Child('child');
+    $p->child = $c;
+    $c->parent = $p;
+}
+
+class Filler {}
+
+function main(): void
+{
+    make();
+    echo "made\n";
+    for ($i: int = 0; $i < 20000; $i++) {
+        $f: Filler = new Filler();
+    }
+    echo "collected\n";
+    for ($i: int = 0; $i < 40000; $i++) {
+        $f: Filler = new Filler();
+    }
+    echo "end\n";
+}

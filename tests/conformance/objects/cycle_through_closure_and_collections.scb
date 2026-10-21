@@ -1,0 +1,47 @@
+// EXPECT-STDOUT:
+// | made
+// | closure,list,map
+namespace Conformance;
+
+// Cycles through a closure's captures, a list and a map are all collected. The
+// collector's destructor order is unspecified, so the names are sorted.
+class Log
+{
+    public static $names: list<string> = [];
+}
+
+class Holder
+{
+    public $callback: ?fn(): string = null;
+    public $items: list<Holder> = [];
+    public $byName: map<string, Holder> = [];
+
+    public function __construct(public $name: string) {}
+
+    public function __destruct()
+    {
+        Log::$names->push($this->name);
+    }
+}
+
+class Filler {}
+
+function make(): void
+{
+    $c: Holder = new Holder('closure');
+    $c->callback = fn(): string => $c->name;
+    $l: Holder = new Holder('list');
+    $l->items->push($l);
+    $m: Holder = new Holder('map');
+    $m->byName['self'] = $m;
+}
+
+function main(): void
+{
+    make();
+    echo "made\n";
+    for ($i: int = 0; $i < 20000; $i++) {
+        $f: Filler = new Filler();
+    }
+    echo Log::$names->sorted()->join(','), "\n";
+}
