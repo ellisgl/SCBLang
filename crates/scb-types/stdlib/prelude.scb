@@ -115,10 +115,11 @@ class AssertionError extends Error
 {
 }
 
-// SPEC "Errors": `assert()` is always on. `debugAssert()` is stripped from release
-// builds; the POC has no release build, so it is always checked too. Both throw
-// `AssertionError` when `$condition` is false. SPEC-OPEN: Q42 (namespace, signature,
-// debugAssert in the POC).
+// SPEC "Errors": built into the compiler, which lowers calls to a check that throws
+// `AssertionError`; `$message` is evaluated only when `$condition` is false. Not
+// callable as values. `assert()` is always on; `debugAssert()` is checked in debug
+// builds (the POC interpreter is one) and removed with its arguments in release
+// builds.
 function assert($condition: bool, $message: string = ''): void;
 
 function debugAssert($condition: bool, $message: string = ''): void;

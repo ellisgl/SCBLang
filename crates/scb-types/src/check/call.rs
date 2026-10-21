@@ -83,7 +83,11 @@ impl Ctx<'_> {
             what: format!("`{}`", qname_text(q)),
         };
         let func = f.func;
+        let assertion = is_assertion(f);
         let (targs, ret) = self.match_args(callee, args, expect, span);
+        if assertion {
+            return lower_assert(targs, ret, span);
+        }
         Expr {
             kind: T::Call {
                 target: CallTarget::Func(func),
@@ -874,6 +878,18 @@ impl Ctx<'_> {
                     return Self::error_expr(span);
                 };
                 let f = self.decls.function(fid);
+                if is_assertion(f) {
+                    self.report(
+                        Diagnostic::new(
+                            "assert-not-callable",
+                            format!("`{}` cannot be used as a value", f.name),
+                        )
+                        .with_span(span)
+                        .with_note("its message is evaluated only when the assertion fails")
+                        .with_fix("wrap it in a closure: `fn($c: bool): void => assert($c)`"),
+                    );
+                    return Self::error_expr(span);
+                }
                 if !f.type_params.is_empty() {
                     self.report(
                         Diagnostic::new(
@@ -1487,5 +1503,34 @@ fn has_nullsafe(e: &ast::Expr) -> bool {
         } => *nullsafe || has_nullsafe(object),
         A::Index { object, .. } | A::Paren(object) => has_nullsafe(object),
         _ => false,
+    }
+}
+
+/// The prelude's `assert` / `debugAssert`: built into the compiler (SPEC "Errors").
+fn is_assertion(f: &crate::decls::FnDecl) -> bool {
+    f.stdlib && matches!(f.name.as_str(), "assert" | "debugAssert")
+}
+
+/// `assert(c, m)` → [`T::Assert`], so the message is evaluated only on failure.
+/// `debugAssert` lowers the same way: the POC interpreter is a debug build.
+fn lower_assert(args: Vec<Arg>, ty: Ty, span: Span) -> Expr {
+    let mut condition = None;
+    let mut message = None;
+    for a in args {
+        if let ArgValue::Value(e) = a.value {
+            match a.param {
+                0 => condition = Some(Box::new(e)),
+                _ => message = Some(Box::new(e)),
+            }
+        }
+    }
+    match condition {
+        Some(condition) => Expr {
+            kind: T::Assert { condition, message },
+            ty,
+            span,
+        },
+        // A missing condition was reported by argument matching.
+        None => Ctx::error_expr(span),
     }
 }

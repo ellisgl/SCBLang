@@ -228,6 +228,21 @@ impl Interp<'_> {
                 Value::str(s)
             }
             K::Throw(x) => return Err(Flow::Throw(self.eval(x)?, span)),
+            K::Assert { condition, message } => {
+                if self.eval(condition)?.as_bool() {
+                    return Ok(Value::Null);
+                }
+                let text = match message {
+                    Some(m) => self.eval(m)?.as_str().to_string(),
+                    None => String::new(),
+                };
+                let text = if text.is_empty() {
+                    "assertion failed".to_string()
+                } else {
+                    text
+                };
+                return Err(self.error("AssertionError", text, span));
+            }
             K::Exit(code) => {
                 let code = match code {
                     Some(c) => self.eval(c)?.as_i64(),

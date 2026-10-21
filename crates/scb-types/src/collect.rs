@@ -69,6 +69,8 @@ pub const PRELUDE_NAMES: &[&str] = &[
     "ParseException",
     "EncodingException",
     "Ref",
+    "assert",
+    "debugAssert",
 ];
 
 fn vis(v: ast::Visibility) -> Visibility {

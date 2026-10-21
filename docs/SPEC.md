@@ -104,7 +104,8 @@ true try unsafe use void while yield
   - collections: `list`, `map`, `set`, `tuple`;
   - language types: `Range` (built by `..=` / `..<`), `Generator` (built by `yield`), `Iterable` (consumed by `foreach`);
   - operator interfaces: `Stringable`, `Equatable`, `Comparable`, `Hashable`, `Callable`, `Sendable`. `string`, every integer type and both float types implement `Stringable`; `bool` does not;
-  - the throwable hierarchy (`Throwable`, `Error`, `Exception`, `IndexError`, …) and `Ref`.
+  - the throwable hierarchy (`Throwable`, `Error`, `Exception`, `IndexError`, …) and `Ref`;
+  - assertions: `assert`, `debugAssert` (see Errors).
 
   `void`, `never` and `null` are keywords. Everything else in the stdlib lives in a namespace (`\Math\Rounding`, `\Str\Form`, `\Float\Key`, `\Time\Duration`, …). No prelude name may be declared as a type, function or constant (`prelude-name-redeclared`); in particular `(i8)` is always a cast. This applies to template functions too: `List.scbt` must be renamed (e.g. `UserList.scbt`).
 - `extern` and `unsafe` are reserved for future FFI.
@@ -615,7 +616,7 @@ Throwable
 - Kept from PHP 8: `finally`, multi-catch `catch ($e: A | B)`, catch without a variable, `throw` as an expression, `previous` chaining.
 - `return`, `break` and `continue` written directly in a `finally` body, leaving it, are compile errors (`control-leaves-finally`). `break` / `continue` of a loop nested inside the `finally` body are fine. `exit(…)` and `throw` remain allowed.
 - Anything that still leaves a `finally` while a throwable is pending (a `throw`, an `exit`, or either reached through a call) wins, and the pending throwable is never dropped silently: its trace is printed to stderr marked "discarded by throw / exit(n) at file:line". A new throwable that has no `previous` also gets the discarded one as `previous`.
-- `assert()` is always on. `debugAssert()` is stripped from release builds.
+- Assertions: `assert($condition: bool, $message: string = '')` and `debugAssert(…)` (same signature) throw `AssertionError` with `$message` (or "assertion failed" when empty) if `$condition` is false. They are built into the compiler: `$message` is evaluated only when the assertion fails, and neither can be used as a value (`assert(...)` is a compile error, `assert-not-callable`). `assert()` is always on. `debugAssert()` is checked in debug builds (the POC interpreter is one) and removed with its arguments, including their side effects, in release builds.
 - An uncaught throwable in a fiber is rethrown to whoever awaits or joins it. If none, the scheduler logs it and exits non-zero.
 
 ## Modules and packages

@@ -1,0 +1,7 @@
+// EXPECT-COMPILE-ERROR: assert-not-callable
+namespace Conformance;
+
+function main(): void
+{
+    $check: fn(bool, string): void = assert(...);
+}

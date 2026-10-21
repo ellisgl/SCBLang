@@ -319,6 +319,13 @@ pub enum ExprKind {
     /// String interpolation: the parts are `string` expressions, concatenated.
     Interpolate(Vec<Expr>),
     Throw(Box<Expr>),
+    /// `assert($condition, $message)` / `debugAssert(…)` (SPEC "Errors"): when the
+    /// condition is false, the message (if given) is evaluated and `AssertionError`
+    /// thrown. The message is not evaluated when the assertion holds. Type `void`.
+    Assert {
+        condition: Box<Expr>,
+        message: Option<Box<Expr>>,
+    },
     /// `exit(code)`; type `never`.
     Exit(Option<Box<Expr>>),
     /// `clone $obj` / `clone($obj, field: value, …)`.

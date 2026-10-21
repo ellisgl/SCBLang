@@ -67,6 +67,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `bitwise-on-bool` | `&`, `\|`, `^` on `bool` | Numerics |
 | `bool-cast` | `(bool) $x` | Casts and conversions |
 | `cannot-infer` | Collection literal with no declared type, e.g. `[]` | Collections and values |
+| `assert-not-callable` | `assert(...)` / `debugAssert(...)` used as a value | Errors |
 | `control-leaves-finally` | `return` / `break` / `continue` directly in a `finally` body | Errors |
 | `exclusivity-violation` | Overlapping modifying access to a local | Exclusivity |
 | `literal-out-of-range` | Numeric literal does not fit its type (the lexer reports values beyond 64 bits) | Numerics |

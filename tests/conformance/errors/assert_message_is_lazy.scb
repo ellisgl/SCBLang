@@ -1,0 +1,27 @@
+// EXPECT-STDOUT:
+// | checked 3
+// | built message for 0
+// | caught: n must be positive, got 0
+namespace Conformance;
+
+function describe($n: int): string
+{
+    echo "built message for ", $n, "\n";
+    return "n must be positive, got {$n}";
+}
+
+function main(): void
+{
+    $checked: int = 0;
+    foreach ([1, 2, 3] as $n) {
+        assert($n > 0, describe($n));
+        debugAssert($n > 0, describe($n));
+        $checked++;
+    }
+    echo "checked ", $checked, "\n";
+    try {
+        assert(message: describe(0), condition: 0 > 0);
+    } catch ($e: \AssertionError) {
+        echo 'caught: ', $e->getMessage(), "\n";
+    }
+}

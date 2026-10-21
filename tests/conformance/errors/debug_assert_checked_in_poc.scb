@@ -1,5 +1,4 @@
 // EXPECT-RUNTIME-ERROR: AssertionError
-// SPEC-OPEN: Q42
 namespace Conformance;
 
 function main(): void

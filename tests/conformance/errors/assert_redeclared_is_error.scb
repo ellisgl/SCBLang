@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: prelude-name-redeclared
+namespace Conformance;
+
+function assert($c: bool): void {}
+
+function main(): void
+{
+}
