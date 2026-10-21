@@ -130,8 +130,13 @@ impl Interp<'_> {
             } => match self.eval(object)? {
                 Value::Null => Value::Null,
                 v => {
+                    // The subject lives in a hidden local only for the chain: free it
+                    // after, so it is not kept alive (and undestructed) until the
+                    // function returns.
                     *self.local(*local) = v;
-                    self.eval(then)?
+                    let r = self.eval(then);
+                    *self.local(*local) = Value::Null;
+                    r?
                 }
             },
             K::EnumValue(x) => {
@@ -466,7 +471,13 @@ impl Interp<'_> {
             Some(Receiver::Place(p)) => {
                 let ep = self.eval_place(p)?;
                 let (vals, inouts) = self.eval_args(fid, args)?;
-                let recv = self.take(&ep)?;
+                let recv = match self.take(&ep) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        self.abandon_args(vals, inouts)?;
+                        return Err(e);
+                    }
+                };
                 let claim = self.begin_exclusive(&ep);
                 self.iso.ret_hint = Some(ret);
                 let (r, mut end) = self.call_func(fid, Some(recv), vals, &[], span);
@@ -508,7 +519,13 @@ impl Interp<'_> {
     /// moved out of its place, and the final `$this` written back (also after a throw).
     fn invoke_on_place(&mut self, fid: FuncId, ep: &EPlace, args: &[Arg], span: Span) -> R<Value> {
         let (vals, inouts) = self.eval_args(fid, args)?;
-        let recv = self.take(ep)?;
+        let recv = match self.take(ep) {
+            Ok(v) => v,
+            Err(e) => {
+                self.abandon_args(vals, inouts)?;
+                return Err(e);
+            }
+        };
         let claim = self.begin_exclusive(ep);
         let (r, mut end) = self.call_func(fid, Some(recv), vals, &[], span);
         self.end_exclusive(claim);
@@ -591,12 +608,7 @@ impl Interp<'_> {
                 match self.eval_init(init) {
                     Ok(v) => super::set_field(&mut obj, *idx, v),
                     Err(e) => {
-                        // Put `inout` arguments back before giving up.
-                        let mut end = super::CallEnd {
-                            this: None,
-                            params: vals.into_iter().map(Option::unwrap_or_default).collect(),
-                        };
-                        self.write_back(inouts, &mut end)?;
+                        self.abandon_args(vals, inouts)?;
                         return Err(e);
                     }
                 }

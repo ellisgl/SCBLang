@@ -1,0 +1,34 @@
+// EXPECT-STDOUT:
+// | caught
+// | 5 5
+namespace Conformance;
+
+// Regression: `inout` arguments are moved out before the receiver; when taking
+// the receiver fails (here an exclusivity conflict), they must be put back and
+// their claims released.
+struct Acc
+{
+    public function __construct(public $v: int) {}
+
+    public mutating function absorb(inout $x: int): void
+    {
+        $this->v += $x;
+    }
+}
+
+class Holder
+{
+    public function __construct(public $acc: Acc) {}
+}
+
+function main(): void
+{
+    $a: Holder = new Holder(new Acc(5));
+    $b: Holder = $a;
+    try {
+        $a->acc->absorb(inout $b->acc->v);
+    } catch (\ExclusivityError) {
+        echo "caught\n";
+    }
+    echo $a->acc->v, ' ', $b->acc->v, "\n";
+}

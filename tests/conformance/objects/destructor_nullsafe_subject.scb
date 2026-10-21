@@ -1,0 +1,24 @@
+// EXPECT-STDOUT:
+// | hi
+// | ~tmp
+// | after
+namespace Conformance;
+
+// Regression: the subject of `?->` was kept in a hidden local until the function
+// returned, delaying its destructor.
+class N
+{
+    public function __destruct() { echo "~tmp\n"; }
+    public function hi(): string { return 'hi'; }
+}
+
+function make(): ?N
+{
+    return new N();
+}
+
+function main(): void
+{
+    echo make()?->hi() ?? '', "\n";
+    echo "after\n";
+}

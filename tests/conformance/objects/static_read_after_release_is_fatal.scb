@@ -1,0 +1,28 @@
+// EXPECT-STDOUT:
+// | done
+// EXPECT-STDERR-CONTAINS: Fatal error
+// EXPECT-STDERR-CONTAINS: StaticInitError
+// EXPECT-EXIT: 1
+namespace Conformance;
+
+class Logger
+{
+    public function __destruct()
+    {
+        // `Config::$name` was initialized later, so it is released first.
+        echo Config::$name, "\n";
+    }
+}
+
+class Config
+{
+    public static $logger: Logger = new Logger();
+    public static $name: string = 'config';
+}
+
+function main(): void
+{
+    $l: Logger = Config::$logger;
+    $n: string = Config::$name;
+    echo "done\n";
+}

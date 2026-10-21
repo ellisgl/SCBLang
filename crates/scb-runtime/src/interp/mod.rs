@@ -376,6 +376,17 @@ impl<'a> Interp<'a> {
         Ok((out, inouts))
     }
 
+    /// Gives evaluated arguments back when the call does not happen after all (its
+    /// receiver or instance could not be prepared): `inout` values return to their
+    /// places and their claims end.
+    pub(crate) fn abandon_args(&mut self, vals: Vec<Option<Value>>, inouts: Vec<Inout>) -> R<()> {
+        let mut end = CallEnd {
+            this: None,
+            params: vals.into_iter().map(Option::unwrap_or_default).collect(),
+        };
+        self.write_back(inouts, &mut end)
+    }
+
     /// Writes final `inout` parameter values back into the caller's places.
     pub(crate) fn write_back(&mut self, inouts: Vec<Inout>, end: &mut CallEnd) -> R<()> {
         for a in &inouts {
@@ -549,11 +560,11 @@ impl<'a> Interp<'a> {
             )),
             other => other,
         };
-        // Program end: `main`'s locals are gone; the statics follow (SPEC
-        // "Destructors": also after `exit`). Not after `abort` or a fatal error.
-        // SPEC-OPEN: Q41 (also at a normal end and after an uncaught throwable)
+        // Program end (SPEC "Destructors"): `main`'s locals are gone; the statics
+        // follow, on every end but `abort` and fatal errors. After an uncaught
+        // throwable they follow its trace (in `finish`).
         let result = match result {
-            Err(Flow::Abort | Flow::Fatal(_)) => result,
+            Err(Flow::Abort | Flow::Fatal(_) | Flow::Throw(_)) => result,
             _ => match self.run_destructors().and_then(|()| self.release_statics()) {
                 Ok(()) => result,
                 Err(fatal) => Err(fatal),
@@ -588,6 +599,15 @@ impl<'a> Interp<'a> {
             Err(Flow::Throw(e)) => {
                 let text = self.describe_throwable(&e, "Uncaught");
                 let _ = self.iso.write_stderr(text.as_bytes());
+                drop(e);
+                // The statics go after the trace (SPEC "Destructors").
+                let teardown = self.run_destructors().and_then(|()| self.release_statics());
+                let _ = self.iso.flush_stdout();
+                if let Err(Flow::Fatal(msg)) = teardown {
+                    let _ = self
+                        .iso
+                        .write_stderr(format!("Fatal error: {msg}\n").as_bytes());
+                }
                 1
             }
             Err(Flow::Fatal(msg)) => {

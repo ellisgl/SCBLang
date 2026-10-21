@@ -663,13 +663,15 @@ Testing: `scb test` runs `#[Test]` functions in `tests/`; assertions come from `
 
 | Case | Rule |
 | --- | --- |
-| Timing | Deterministic: when the refcount hits 0 (scope exit, overwrite, `remove`) |
+| Timing | Deterministic: when the refcount hits 0 (scope exit, overwrite, `remove`), before the next statement runs. A value not held by any variable (a temporary) is destructed at the end of the statement that released it, never in the middle of an expression |
 | Order at scope exit | Reverse declaration order |
 | Fields | The object's `__destruct` runs first, then fields are released in declaration order |
 | Cycles | The collector runs destructors in unspecified order; all run before any memory is freed |
 | Throwing from `__destruct` | Fatal: trace to stderr, exit code 1, no further unwinding |
 | `exit` inside `__destruct` | Fatal, same as throwing: stderr names the destructor and the `exit` call site |
+| Program end | On a normal return from `main`, `Process\exit` and an uncaught throwable: locals are destructed as their scopes unwind, then statics in reverse initialization order. After an uncaught throwable, its trace is printed before the statics are destructed. Not after `Process\abort` or a fatal error |
 | `Process\exit` | Unwinds; locals destructed; statics destructed in reverse initialization order |
+| Static read after release | A destructor that runs at program end and reads a static already released throws `StaticInitError` (fatal, as it escapes a destructor) |
 | `Process\abort` | No destructors run |
 
 ### Static initialization

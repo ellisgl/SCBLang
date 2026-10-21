@@ -1,0 +1,23 @@
+// EXPECT-RUNTIME-ERROR: Exception
+// EXPECT-STDOUT:
+// | ~local
+// | ~static
+namespace Conformance;
+
+class Noisy
+{
+    public function __construct(private $name: string) {}
+    public function __destruct() { echo '~', $this->name, "\n"; \Io\eprint('~' . $this->name . "\n"); }
+}
+
+class Registry
+{
+    public static $kept: Noisy = new Noisy('static');
+}
+
+function main(): void
+{
+    $s: Noisy = Registry::$kept;
+    $l: Noisy = new Noisy('local');
+    throw new \Exception('boom');
+}

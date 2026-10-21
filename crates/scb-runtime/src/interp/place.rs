@@ -295,7 +295,6 @@ impl Interp<'_> {
                 super::stmt::set_previous(&e, original);
                 Err(Flow::Throw(e))
             }
-            // SPEC-OPEN: Q41 (a static read after release at program end)
             StaticSlot::Destroyed => {
                 let name = &self.program.decls.static_(sid).name;
                 let msg = format!("static `${name}` is used after it was released at program end");

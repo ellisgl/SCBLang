@@ -146,28 +146,18 @@ impl Ctx<'_> {
                 (StmtKind::Match(*m), diverges)
             }
             S::Echo(es) => {
-                let stmts = es
+                let parts = es
                     .iter()
                     .map(|e| {
                         let x = self.expr(e, None);
-                        let x = self.stringify(x);
-                        Stmt {
-                            span: x.span,
-                            kind: StmtKind::Print(x),
-                        }
+                        self.stringify(x)
                     })
                     .collect();
-                (
-                    StmtKind::Block(tir::Block {
-                        stmts,
-                        locals: Vec::new(),
-                    }),
-                    false,
-                )
+                (StmtKind::Print(parts), false)
             }
             S::Print(e) => {
                 let x = self.expr(e, None);
-                (StmtKind::Print(self.stringify(x)), false)
+                (StmtKind::Print(vec![self.stringify(x)]), false)
             }
             S::Exit => (
                 StmtKind::Expr(Expr {

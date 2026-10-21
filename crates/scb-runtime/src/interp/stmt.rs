@@ -25,7 +25,6 @@ impl Interp<'_> {
 
     /// Statements in order; values released by a statement (an overwritten
     /// variable, a temporary) are destructed before the next one.
-    // SPEC-OPEN: Q41 (temporaries: end of the statement, not mid-expression)
     fn exec_stmts(&mut self, stmts: &[Stmt]) -> R<()> {
         for s in stmts {
             self.exec(s)?;
@@ -157,11 +156,13 @@ impl Interp<'_> {
             StmtKind::Match(m) => {
                 self.eval_match(m)?;
             }
-            StmtKind::Print(e) => {
-                let v = self.eval(e)?;
-                // SPEC: a failed write throws `IoException`, as `Io\print` does.
-                if let Err(err) = self.iso.write_stdout(v.as_str().as_bytes()) {
-                    return Err(self.error("IoException", err.to_string(), s.span));
+            StmtKind::Print(parts) => {
+                for e in parts {
+                    let v = self.eval(e)?;
+                    // SPEC: a failed write throws `IoException`, as `Io\print` does.
+                    if let Err(err) = self.iso.write_stdout(v.as_str().as_bytes()) {
+                        return Err(self.error("IoException", err.to_string(), e.span));
+                    }
                 }
             }
             StmtKind::Return(e) => {

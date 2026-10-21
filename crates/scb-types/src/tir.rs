@@ -151,8 +151,9 @@ pub enum StmtKind {
         finally: Option<Block>,
     },
     Match(Match),
-    /// One `echo` / `print` operand, already converted to `string`.
-    Print(Expr),
+    /// `echo` / `print`: the operands, already converted to `string`, each written
+    /// as soon as it is evaluated. One statement, however many operands.
+    Print(Vec<Expr>),
     Return(Option<Expr>),
     /// `break n;` / `continue n;` with `n ≥ 1` loops.
     Break(u32),

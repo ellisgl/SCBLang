@@ -1,0 +1,27 @@
+// EXPECT-STDOUT:
+// | 7
+namespace Conformance;
+
+// Regression: `inout` arguments are moved out before the receiver; when the
+// receiver's place does not exist, they must be put back.
+struct Acc
+{
+    public function __construct(public $v: int) {}
+
+    public mutating function absorb(inout $x: int): void
+    {
+        $this->v += $x;
+        $x = 0;
+    }
+}
+
+function main(): void
+{
+    $x: int = 7;
+    $l: list<Acc> = [];
+    try {
+        $l[5]->absorb(inout $x);
+    } catch (\IndexError) {
+    }
+    echo $x, "\n";
+}
