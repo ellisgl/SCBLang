@@ -1,0 +1,4 @@
+# Build context for examples/cgi/docker (the whole repo): keep it small.
+/target
+/.git
+/.idea

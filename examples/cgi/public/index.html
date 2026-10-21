@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCB CGI Demo</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #66665f;
+    --line: #dcdcd6; --accent: #2f5fd0; --code: #f0f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #e9e9e4; --muted: #a2a29a;
+      --line: #34342f; --accent: #7fa2ff; --code: #2a2a27;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  p.lead { color: var(--muted); margin: 0 0 24px; }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input[type=text], textarea {
+    flex: 1 1 240px; min-width: 0; padding: 8px; font: inherit;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--text);
+  }
+  textarea { min-height: 70px; flex-basis: 100%; }
+  button {
+    padding: 8px 14px; font: inherit; border: 0; border-radius: 6px;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  ul.cases { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  ul.cases a { color: var(--accent); font-family: ui-monospace, monospace; }
+  ul.cases span { color: var(--muted); }
+  code { background: var(--code); padding: 1px 4px; border-radius: 4px; }
+  iframe {
+    width: 100%; height: 260px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fff;
+  }
+  .note { color: var(--muted); font-size: .9rem; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SCB behind NGINX</h1>
+  <p class="lead">
+    Each request below runs <code>examples/cgi/handler.scb</code> with
+    <code>scb run</code>, through fcgiwrap. The handler reads the request from
+    <code>\Env\get()</code> and <code>\Io\readAll()</code> and writes headers and
+    body with <code>echo</code>.
+  </p>
+
+  <section>
+    <h2>GET with a query string</h2>
+    <form action="/scb" method="get" target="out">
+      <input type="text" name="q" value="hello world" aria-label="Query value">
+      <button>Send GET</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>POST with a body</h2>
+    <form action="/scb" method="post" target="out" enctype="text/plain">
+      <textarea name="text" aria-label="Body">héllo wörld — UTF-8 works</textarea>
+      <button>Send POST</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Other cases</h2>
+    <ul class="cases">
+      <li><a href="/scb?created" target="out">/scb?created</a>
+        <span>— the script echoes <code>Status: 201 Created</code></span></li>
+      <li><a href="/scb?fail" target="out">/scb?fail</a>
+        <span>— throws after the headers: 200 with a truncated body, trace in
+        <code>docker compose logs</code></span></li>
+      <li><a href="/scb?fail-early" target="out">/scb?fail-early</a>
+        <span>— throws before any output: NGINX answers 502</span></li>
+      <li><a href="/scb?exit" target="out">/scb?exit</a>
+        <span>— <code>exit(3)</code> after the body: CGI has no channel for the
+        exit code, so the client gets 200</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Response</h2>
+    <iframe name="out" title="Handler response" src="/scb?from=page"></iframe>
+    <p class="note">Status codes and headers: open the browser's network tab, or
+      <code>curl -i 'http://localhost:8080/scb?created'</code>.</p>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# SCB behind NGINX in a browser:
+#   docker compose -f examples/cgi/docker/compose.yaml up --build
+# then open http://localhost:8080/ (SCB_PORT=9000 to use another port).
+# Edits to examples/cgi/handler.scb apply on the next request: every request
+# runs `scb run`, which compiles the file afresh.
+
+name: scb-cgi
+
+services:
+  scb:
+    build:
+      context: ../../..
+      dockerfile: examples/cgi/docker/Dockerfile
+    image: scb-cgi-demo
+    ports:
+      - "${SCB_PORT:-8080}:80"
+    volumes:
+      - ../:/srv/scb/cgi:ro

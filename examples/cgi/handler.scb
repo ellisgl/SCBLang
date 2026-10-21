@@ -3,22 +3,42 @@ namespace App;
 // CGI smoke test (POC milestone M8). Run by fcgiwrap via handler.cgi.
 // CGI contract: request metadata from Env\get(), body from Io\readAll(),
 // response (headers, blank line, body) via echo.
+//
+// Query strings that select a case:
+//   fail        throw after the headers were echoed (truncated 200 response)
+//   fail-early  throw before any output (NGINX answers 502)
+//   created     emit a Status header (201) and a custom header
+//   exit        exit(3) after the body (the client still gets the response)
 
 function main(): int
 {
     $method: string = \Env\get('REQUEST_METHOD') ?? 'GET';
     $query: string = \Env\get('QUERY_STRING') ?? '';
 
+    if ($query == 'fail-early') {
+        throw new \Exception('failed before any output');
+    }
+
     $body: bytes = \Io\readAll();
 
+    if ($query == 'created') {
+        echo "Status: 201 Created\r\n";
+    }
     echo "Content-Type: text/plain; charset=utf-8\r\n";
+    echo "X-Powered-By: SCB\r\n";
     echo "\r\n";
     echo "method: {$method}\n";
     echo "query: {$query}\n";
     echo "body bytes: {$body->count()}\n";
+    if ($body->count() > 0) {
+        echo "body: {$body->decodeUtf8()}\n";
+    }
 
     if ($query == 'fail') {
         throw new \Exception('requested failure');
+    }
+    if ($query == 'exit') {
+        exit(3);
     }
 
     return 0;
