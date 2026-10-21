@@ -658,10 +658,7 @@ fn enums() {
         ),
         OK
     );
-    assert_eq!(
-        body_with(decls, "$all: list<Suit> = Suit::cases();"),
-        ["unknown-member"]
-    );
+    assert_eq!(body_with(decls, "$all: list<Suit> = Suit::cases();"), OK);
     assert_eq!(
         body_with(
             decls,
@@ -1067,4 +1064,15 @@ fn collect(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
             out.push(p);
         }
     }
+}
+
+#[test]
+fn data_enums_have_no_cases() {
+    assert_eq!(
+        body_with(
+            "enum Shape { case CIRCLE($r: f64); }",
+            "$all: list<Shape> = Shape::cases();"
+        ),
+        ["unknown-member"]
+    );
 }

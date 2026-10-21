@@ -466,8 +466,8 @@ impl Ctx<'_> {
         }
     }
 
-    /// The built-in backed-enum API (SPEC "Enums and match"): `from()`, `tryFrom()`,
-    /// `cases()`. `None` if `name` is not one of them.
+    /// The built-in enum API (SPEC "Enums and match"): `from()` and `tryFrom()` on
+    /// backed enums, `cases()` on pure and backed enums. `None` if `name` is not one.
     fn enum_builtin(
         &mut self,
         decl: DeclId,
@@ -535,13 +535,13 @@ impl Ctx<'_> {
                 })
             }
             "cases" => {
-                // SPEC-OPEN: Q35 — SPEC lists `cases()` under the backed-enum API; pure enums
-                // are left out until decided.
-                if backing.is_none() || has_data {
+                // SPEC "Enums and match" (Q35): pure and backed enums; data-carrying
+                // cases need payloads, so those enums have no `cases()`.
+                if has_data {
                     self.report(
                         Diagnostic::new(
                             "unknown-member",
-                            "`cases()` is part of the backed-enum API",
+                            "`cases()` lists enums without payloads only",
                         )
                         .with_span(name.span),
                     );
@@ -1208,9 +1208,8 @@ impl Ctx<'_> {
                     } else if let ast::ArgKind::Spread(_) = a.kind
                         && variadic.is_none()
                     {
-                        // SPEC-OPEN: Q33 — spreading into fixed parameters and `...$map`
-                        // into named arguments are not specified in detail; only a list
-                        // spread into a variadic parameter is supported.
+                        // SPEC "Functions" (Q33): a list spreads only into a variadic
+                        // parameter; fixed parameters and `...$map` are not supported.
                         self.report(
                             Diagnostic::new(
                                 "wrong-arguments",

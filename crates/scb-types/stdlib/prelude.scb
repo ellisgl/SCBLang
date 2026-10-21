@@ -18,8 +18,7 @@ interface Stringable
     public function toString(): string;
 }
 
-// SPEC-OPEN: Q30 — the methods of Equatable, Hashable and Comparable are not
-// specified. `self` stands for the implementing type.
+// SPEC "Equality and comparison" (Q30): `self` stands for the implementing type.
 interface Equatable
 {
     public function equals($other: self): bool;
@@ -87,8 +86,7 @@ extendable class Exception extends Throwable
 {
 }
 
-// SPEC-OPEN: Q34 — whether the specific throwables are extendable is not specified;
-// only `Error` and `Exception` are, for now.
+// SPEC "Errors" (Q34): only `Error` and `Exception` are extendable; these are final.
 class OverflowError extends Error
 {
 }
@@ -158,8 +156,7 @@ class string
 {
     public function bytes(): bytes;
 
-    // SPEC-OPEN: Q31 — the view types of `codepoints()` / `graphemes()` are not
-    // specified; lists for now.
+    // SPEC "Strings" (Q31): the views are materialized lists.
     public function codepoints(): list<u32>;
 
     public function graphemes(): list<string>;
@@ -250,8 +247,7 @@ class list<T> implements Iterable<T>
 
     public mutating function sort(): void where T of Comparable;
 
-    // SPEC-OPEN: Q32 — `sortBy($f)` could take a key selector or a comparator; a
-    // comparator (`<=>`-style result) for now.
+    // SPEC "Core library" (Q32): a comparator with a `<=>`-style result.
     public mutating function sortBy($f: fn(T, T): int): void;
 
     public mutating function reverse(): void;

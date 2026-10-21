@@ -206,8 +206,8 @@ Shifts: the amount is always `u32` (literal amounts adapt; a variable needs `(u3
 | View | Element | Indexing | Length |
 | --- | --- | --- | --- |
 | `$s->bytes()` (returns `bytes`) | `u8` | O(1) | `byteLength()` |
-| `$s->codepoints()` | `u32` | iterate | `codepointLength()` |
-| `$s->graphemes()` | `string` | iterate | `graphemeLength()` |
+| `$s->codepoints()` (returns `list<u32>`) | `u32` | iterate | `codepointLength()` |
+| `$s->graphemes()` (returns `list<string>`) | `string` | iterate | `graphemeLength()` |
 
 - No bare `length()`; no `char` type.
 - Search and slicing (`$s->find()`, `$s->slice()`) use byte offsets. Slicing at a non-boundary traps (`BoundaryError`).
@@ -372,7 +372,7 @@ public function join($sep: string): string where T of Stringable
 | `is` | Identity | Class instances only; compile error on value types |
 | `<=>` | Ordering | Types implementing `Comparable` |
 
-- `Equatable` and `Comparable` are interface-based operator overloading.
+- `Equatable` and `Comparable` are interface-based operator overloading. Their methods, where `self` is the implementing type: `Equatable::equals($other: self): bool`, `Hashable::hash(): int` (`Hashable` extends `Equatable`: equal values hash equally), `Comparable::compareTo($other: self): int` (negative, zero or positive, like `<=>`).
 - `Hashable` governs map keys and set members.
 - Built-in conformance: integer types, `string` and `bytes` are `Equatable`, `Hashable` and `Comparable` (`string` / `bytes` byte-wise); float types are `Equatable` (IEEE) and `Comparable` (`totalOrder`), not `Hashable`; `bool` is `Equatable` and `Hashable`, not `Comparable`.
 
@@ -416,7 +416,7 @@ $fmt: fn(User): string = fn($u: User): string {
 - **First-class callables:** `\Str\normalize(...)`, `$obj->method(...)`, `Foo::bar(...)`.
 - **Named arguments:** supported; parameter names are part of the public API.
 - **Defaults:** constant expressions plus `new` in initializers.
-- **Variadics:** `...$xs: int` arrives as `list<int>`. Spread `...$list` into positional args and `...$map` into named args.
+- **Variadics:** `...$xs: int` arrives as `list<int>`. Spread `...$list` passes a `list<T>` to a variadic `...$xs: T` parameter; spreading into fixed parameters or `...$map` into named arguments is not supported (it could only be checked at runtime).
 - **No overloading.** Use defaults, unions and named arguments.
 - **Pipe and partial application:** methods chain; the pipe is for free functions.
 
@@ -506,7 +506,7 @@ enum Shape {                                             // data-carrying
 ```
 
 - Construction is call-like, without `new`, mirroring the pattern: `Shape::CIRCLE(1.5)`, `Shape::RECT(w: 2.0, h: 3.0)` (named arguments allowed); pure and backed cases have no parentheses (`Suit::HEARTS`). A data case without arguments is a compile error (`missing-case-arguments`); it is not a function value.
-- Backed API: `from()` traps (`ValueError`), `tryFrom()` returns `?Self`, `cases()`.
+- Backed API: `from()` traps (`ValueError`), `tryFrom()` returns `?Self`. Pure and backed enums have `cases()`, every case in declaration order; data-carrying enums do not (their cases need payloads).
 
 `match`:
 
@@ -598,7 +598,7 @@ Parameters cannot be destructured; parameter names are public API through named 
 
 ## Errors
 
-Exceptions are unchecked. User classes extend `Error` or `Exception`; they cannot implement `Throwable` directly. `Error` and `Exception` are concrete: `throw new Exception('failed');` is valid. The whole hierarchy is in the prelude, so `IndexError` and `\IndexError` name the same class.
+Exceptions are unchecked. User classes extend `Error` or `Exception`; they cannot implement `Throwable` directly. The specific built-in throwables (`IndexError`, `ParseException`, …) are final. `Error` and `Exception` are concrete: `throw new Exception('failed');` is valid. The whole hierarchy is in the prelude, so `IndexError` and `\IndexError` name the same class.
 
 ```
 Throwable
@@ -784,8 +784,8 @@ Conventions:
 | --- | --- |
 | Size | `count(): int`, `isEmpty(): bool` |
 | Read | `get($i): ?T`, `first(): ?T`, `last(): ?T`, `contains($v)`, `indexOf($v): ?int`, `slice($r: Range<int>)` |
-| Mutate | `push($v)`, `pop(): ?T`, `insert($i, $v)`, `removeAt($i): T`, `swap($i, $j)`, `clear()`, `sort()`, `sortBy($f)`, `reverse()` |
-| New value | `concat($other)`, `sorted()`, `sortedBy($f)`, `reversed()`, `map($f)`, `filter($f)`, `reduce($init, $f)`, `chunk($size)` |
+| Mutate | `push($v)`, `pop(): ?T`, `insert($i, $v)`, `removeAt($i): T`, `swap($i, $j)`, `clear()`, `sort()`, `sortBy($f)` (comparator `fn(T, T): int`, like `<=>`), `reverse()` |
+| New value | `concat($other)`, `sorted()`, `sortedBy($f)` (comparator), `reversed()`, `map($f)`, `filter($f)`, `reduce($init, $f)`, `chunk($size)` |
 | Query | `any($f)`, `all($f)`, `find($f): ?T`, `findIndex($f): ?int`, `each($f)` |
 | Conditional | `join($sep)` (Stringable), `sum(): T` (numeric; `0` / `0.0` when empty; overflow traps), `min(): ?T`, `max(): ?T` (numeric or Comparable; `null` when empty) |
 
