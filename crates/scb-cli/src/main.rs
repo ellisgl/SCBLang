@@ -3,6 +3,10 @@
 //! The only crate that touches real OS handles: it wires stdout, stderr, stdin and
 //! the process environment into an [`Isolate`]. Exit codes are listed in
 //! `docs/DIAGNOSTICS.md`.
+//!
+//! Flow: parse the command line → `load` the source files → `scb_types::check`
+//! (compile; diagnostics go to stderr, exit 2) → for `run`, build an isolate and run
+//! `main`.
 
 use std::ffi::OsString;
 use std::io::{self, BufReader, Write};

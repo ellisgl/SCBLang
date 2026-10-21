@@ -112,6 +112,7 @@ pub fn judge(spec: &Spec, out: &Output, timeout: Duration) -> Vec<String> {
         if !found {
             fails.push(format!("stderr has no `error[{kind}]`"));
         }
+        check_stderr_contains(spec, &stderr, &mut fails);
         return fails;
     }
 
@@ -130,17 +131,23 @@ pub fn judge(spec: &Spec, out: &Output, timeout: Duration) -> Vec<String> {
     {
         fails.push(format!("stdout differs\n{}", diff(want, &out.stdout)));
     }
-    for needle in &spec.stderr_contains {
-        if !stderr.contains(needle.as_str()) {
-            fails.push(format!("stderr has no `{needle}`"));
-        }
-    }
+    check_stderr_contains(spec, &stderr, &mut fails);
     if let Some(class) = &spec.runtime_error
         && !stderr.contains(class.as_str())
     {
         fails.push(format!("stderr does not name `{class}`"));
     }
     fails
+}
+
+/// `EXPECT-STDERR-CONTAINS` applies to every kind of test, including compile errors
+/// (e.g. to pin a fix-it text).
+fn check_stderr_contains(spec: &Spec, stderr: &str, fails: &mut Vec<String>) {
+    for needle in &spec.stderr_contains {
+        if !stderr.contains(needle.as_str()) {
+            fails.push(format!("stderr has no `{needle}`"));
+        }
+    }
 }
 
 fn describe(code: Option<i32>) -> String {
@@ -211,6 +218,17 @@ mod tests {
         );
         assert_eq!(judge(&spec, &output(2, "", "error[other]: x"), T).len(), 1);
         assert_eq!(judge(&spec, &output(0, "", ""), T).len(), 2);
+    }
+
+    #[test]
+    fn compile_error_tests_also_check_stderr_contains() {
+        let spec =
+            parse("// EXPECT-COMPILE-ERROR: short-ternary\n// EXPECT-STDERR-CONTAINS: use `??`\n")
+                .unwrap();
+        let out = output(2, "", "a.scb:1:1: error[short-ternary]: x\n  fix: use `??`");
+        assert!(judge(&spec, &out, T).is_empty());
+        let out = output(2, "", "a.scb:1:1: error[short-ternary]: x");
+        assert_eq!(judge(&spec, &out, T).len(), 1);
     }
 
     #[test]

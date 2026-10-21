@@ -8,8 +8,8 @@ One `.scb` file per test (or one directory; see Multi-file tests), grouped by ar
 | --- | --- |
 | `// EXPECT-STDOUT:` | Followed by zero or more `// \| <text>` lines. Stdout must equal those lines, each followed by `\n`. An empty block means no output. |
 | `// EXPECT-STDOUT-NO-FINAL-NEWLINE` | With `EXPECT-STDOUT`: the last expected line is not followed by `\n`. |
-| `// EXPECT-STDERR-CONTAINS: <text>` | Stderr must contain `<text>`. Repeatable. |
-| `// EXPECT-EXIT: <n>` | Process exit code. Default 0, or 1 when `EXPECT-RUNTIME-ERROR` is present. |
+| `// EXPECT-STDERR-CONTAINS: <text>` | Stderr must contain `<text>`. Repeatable. Also applies to compile-error tests (e.g. to check a fix-it). |
+| `// EXPECT-EXIT: <n>` | Process exit code. Default 0, or 1 when `EXPECT-RUNTIME-ERROR` is present. Not allowed with `EXPECT-COMPILE-ERROR` (always exit 2). |
 | `// EXPECT-COMPILE-ERROR: <kind>` | `scb check` must fail with a diagnostic of that kind (see `docs/DIAGNOSTICS.md`). `<kind>` may be `*` to accept any compile error while kinds are still being named. No run happens. |
 | `// EXPECT-RUNTIME-ERROR: <Class>` | The program compiles, runs, and dies with an uncaught throwable of that class; stderr contains the class name. May be combined with `EXPECT-STDOUT` to check output written before the error. |
 | `// STDIN:` | Followed by `// \| <text>` lines fed to stdin. |

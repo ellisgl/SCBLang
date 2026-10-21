@@ -1,4 +1,9 @@
 //! Types (SPEC "Grammar sketch → Types"). Always postfix: `$x: T`, `): T`.
+//!
+//! `Type = Intersection { "|" Intersection }`, `Intersection = Primary { "&" Primary }`.
+//! Intersections are out of POC scope: they are parsed, reported and reduced to their
+//! first member. Generic arguments use `<…>`; a closing `>>` is split by
+//! [`Parser::eat_close_angle`].
 
 use super::{PResult, Parser};
 use crate::ast::*;
@@ -34,6 +39,8 @@ impl Parser {
         })
     }
 
+    /// `A & B`; the `&` check skips `&$x` so PHP's by-reference parameter syntax is
+    /// left for the parameter parser to report.
     fn intersection(&mut self) -> PResult<Type> {
         let start = self.span();
         let first = self.primary_type()?;
@@ -47,7 +54,14 @@ impl Parser {
         Ok(first)
     }
 
+    /// `?T`, `(T)`, a keyword type, `fn(…): T` or a named type. Recursion (nested `?`,
+    /// parentheses, generic and function arguments) passes through here, so this
+    /// counts depth.
     fn primary_type(&mut self) -> PResult<Type> {
+        self.nested(Self::primary_type_inner)
+    }
+
+    fn primary_type_inner(&mut self) -> PResult<Type> {
         let start = self.span();
         let kind = match self.peek().clone() {
             TokenKind::Punct(Punct::Question) => {
@@ -77,7 +91,7 @@ impl Parser {
                 TypeKind::SelfType
             }
             TokenKind::Keyword(Keyword::Static) => {
-                let span = self.bump().span;
+                let span = self.bump();
                 self.not_in_poc(span, "late static binding (`static` return type)");
                 TypeKind::SelfType
             }

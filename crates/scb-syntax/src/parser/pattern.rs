@@ -1,4 +1,16 @@
 //! `match` and patterns (SPEC "Enums and match", "Destructuring outside match").
+//!
+//! Patterns appear in `match` arms, after `instanceof`, in `foreach` targets and in
+//! destructuring declarations; all use [`Parser::pattern`]. What a pattern *means*
+//! (binding, comparison, type test, exhaustiveness) is the checker's job; the parser
+//! only builds the shape. Two syntactic rules are enforced here:
+//!
+//! - a top-level bare `$var` without a guard is `bare-binding-pattern` (it would match
+//!   everything, while PHP's `match` compared against the variable);
+//! - `match (true)` with condition arms is `match-true` (use the subjectless form).
+//!
+//! `match (true)` is the one place the parser backtracks: each arm is first tried as
+//! a pattern list, and if that does not fit it is re-parsed as conditions.
 
 use super::{Fail, PResult, Parser};
 use crate::ast::*;
@@ -137,21 +149,26 @@ impl Parser {
     /// Patterns for `match (true)`, or `None` (cursor restored) when the arm is not a
     /// pattern list.
     fn try_patterns(&mut self) -> Option<Vec<Pattern>> {
-        let (pos, ndiags) = (self.pos, self.diags.len());
+        let cp = self.checkpoint();
         let ok = self
             .patterns()
             .ok()
             .filter(|_| self.at(Punct::FatArrow) || self.at_kw(Keyword::If));
         if ok.is_none() {
-            self.pos = pos;
-            self.diags.truncate(ndiags);
+            self.restore(cp);
         }
         ok
     }
 
+    /// One pattern. Nested patterns (payloads, list and struct fields) recurse
+    /// through here, so this counts depth.
     pub(crate) fn pattern(&mut self) -> PResult<Pattern> {
+        self.nested(Self::pattern_inner)
+    }
+
+    fn pattern_inner(&mut self) -> PResult<Pattern> {
         let start = self.span();
-        let kind = match self.peek().clone() {
+        let kind = match self.peek() {
             TokenKind::Underscore => {
                 self.bump();
                 if self.eat(Punct::Colon) {
@@ -245,7 +262,7 @@ impl Parser {
             TokenKind::Float(f) => ExprKind::Float(f),
             _ => return Err(self.expected("a number")),
         };
-        let lit_span = self.bump().span;
+        let lit_span = self.bump();
         let lit = Expr {
             kind,
             span: lit_span,
@@ -265,7 +282,7 @@ impl Parser {
     /// `Name`, `Name::CASE`, `Name::CASE(p, …)`, `Name { f: p }`, `Name<T>` (a type).
     fn path_pattern(&mut self) -> PResult<PatternKind> {
         let name = if self.at_kw(Keyword::SelfKw) {
-            let span = self.bump().span;
+            let span = self.bump();
             QualifiedName {
                 absolute: false,
                 parts: vec![Ident {

@@ -32,7 +32,10 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | Kind | Meaning | SPEC section |
 | --- | --- | --- |
 | `not-implemented` | A compiler stage that does not exist yet. Never satisfies a conformance test | — (POC scaffolding) |
+| `internal-error` | The compiler could not run (e.g. the OS refused to start its thread) | — |
+| `too-deeply-nested` | Nesting beyond the parser's depth limit (512 levels; each operator in a chain counts one level) | — (implementation limit) |
 | `invalid-utf8` | Source file is not valid UTF-8 | Lexical structure |
+| `file-too-large` | Source file of 4 GiB or more (positions are 32-bit) | — (implementation limit) |
 | `missing-main` | Directory mode without `main.scb` | Source files and program entry |
 | `bom` | Byte order mark at the start of a file | Lexical structure |
 | `invalid-character` | Character that cannot start a token (e.g. non-ASCII outside strings and comments, `@`) | Lexical structure |

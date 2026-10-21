@@ -1,8 +1,39 @@
 //! Hand-written recursive-descent parser with Pratt operator parsing (SPEC "Grammar
 //! sketch", "Implementation plan").
 //!
-//! Errors are reported as diagnostics and the parser recovers at statement, member and
-//! declaration boundaries, so one run reports every syntax error it can.
+//! # How it works
+//!
+//! The lexer hands over a flat `Vec<Token>` ending in `Eof`. The [`Parser`] walks it
+//! with a cursor (`pos`); every grammar rule is a method that looks at the current
+//! token (`peek`), consumes what it recognizes (`bump`, `eat`, `expect`) and returns
+//! an AST node. The rules are split by topic:
+//!
+//! | File | Grammar |
+//! | --- | --- |
+//! | `decl.rs` | the file, `use`, declarations, class bodies, parameters |
+//! | `stmt.rs` | blocks and statements |
+//! | `expr.rs` | expressions, one function per precedence level (Pratt for binary operators) |
+//! | `pattern.rs` | `match` and patterns |
+//! | `types.rs` | type expressions |
+//!
+//! # Errors and recovery
+//!
+//! A rule that cannot continue reports a [`Diagnostic`] and returns `Err(Fail)`.
+//! `Fail` carries no data: the diagnostic is already recorded. The error travels up
+//! with `?` to the nearest loop over statements, members or declarations, which
+//! skips ahead to a likely boundary (`sync_stmt`, `sync_member`, `sync_decl`) and
+//! continues, so one run reports every independent syntax error.
+//!
+//! Some problems do not stop parsing at all: removed PHP syntax, out-of-scope
+//! features and missing annotations are reported and parsing carries on as if the
+//! code were valid (e.g. `===` is parsed as `==`), which avoids follow-on errors.
+//!
+//! # Limits
+//!
+//! Recursive descent uses the Rust stack, so pathological nesting (`((((…))))` or a
+//! 100 000-term `1 + 1 + …` chain, whose tree is as deep as it is long) would
+//! overflow it. [`Parser::nested`] caps the depth of the tree being built and reports
+//! `too-deeply-nested` instead.
 
 mod decl;
 mod expr;
@@ -12,6 +43,12 @@ mod types;
 
 use crate::ast::{File, Ident, QualifiedName};
 use crate::{Diagnostic, FileId, Keyword, Punct, Span, Token, TokenKind};
+
+/// Maximum depth of the syntax tree: nested expressions, statements, patterns and
+/// types, plus operator and postfix chains (each link is one level). Far above what
+/// real code needs, and low enough that every later recursive pass (checker,
+/// interpreter, the AST's own `Drop`) stays well within a thread's stack.
+const MAX_DEPTH: usize = 512;
 
 /// Parses one file's tokens (as produced by [`crate::lex`]).
 pub fn parse(file: FileId, tokens: Vec<Token>) -> (File, Vec<Diagnostic>) {
@@ -39,9 +76,25 @@ pub(crate) type PResult<T> = Result<T, Fail>;
 
 pub(crate) struct Parser {
     tokens: Vec<Token>,
+    /// Index of the current token. Never moves past the final `Eof`.
     pos: usize,
     file: FileId,
     pub(crate) diags: Vec<Diagnostic>,
+    /// Current tree depth (see [`Parser::nested`]).
+    pub(crate) depth: usize,
+    /// Whether `too-deeply-nested` was reported (once per file is enough).
+    pub(crate) too_deep: bool,
+    /// Tokens rewritten by [`Parser::eat_close_angle`], with their original value,
+    /// so a backtracking caller can restore them (see [`Parser::restore`]).
+    splits: Vec<(usize, Token)>,
+}
+
+/// A cursor position to backtrack to: see [`Parser::checkpoint`].
+pub(crate) struct Checkpoint {
+    pos: usize,
+    diags: usize,
+    splits: usize,
+    too_deep: bool,
 }
 
 impl Parser {
@@ -69,7 +122,75 @@ impl Parser {
             pos: 0,
             file,
             diags: Vec::new(),
+            depth: 0,
+            too_deep: false,
+            splits: Vec::new(),
         }
+    }
+
+    /// A parser for the tokens of a `{$expr}` interpolation, starting at this
+    /// parser's depth so nesting inside strings counts toward the same limit.
+    pub(crate) fn sub_parser(&self, tokens: Vec<Token>) -> Parser {
+        let mut sub = Parser::new(self.file, tokens);
+        sub.depth = self.depth;
+        sub.too_deep = self.too_deep;
+        sub
+    }
+
+    /// Runs `rule` one level deeper in the tree, or reports `too-deeply-nested`.
+    pub(crate) fn nested<T>(&mut self, rule: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        if !self.descend() {
+            return Err(Fail);
+        }
+        let result = rule(self);
+        self.depth -= 1;
+        result
+    }
+
+    /// Enters one tree level; `false` (after reporting) when the limit is reached.
+    /// Every successful call must be paired with `self.depth -= 1`.
+    pub(crate) fn descend(&mut self) -> bool {
+        if self.depth >= MAX_DEPTH {
+            if !self.too_deep {
+                self.too_deep = true;
+                let span = self.span();
+                self.report(
+                    Diagnostic::new(
+                        "too-deeply-nested",
+                        format!("code is nested more than {MAX_DEPTH} levels deep"),
+                    )
+                    .with_span(span)
+                    .with_note("long operator chains count one level per operator")
+                    .with_fix("split the expression or block into smaller pieces"),
+                );
+            }
+            return false;
+        }
+        self.depth += 1;
+        true
+    }
+
+    // ---------- backtracking ----------
+
+    /// Records the cursor so a speculative parse can be undone with [`Parser::restore`].
+    pub(crate) fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            pos: self.pos,
+            diags: self.diags.len(),
+            splits: self.splits.len(),
+            too_deep: self.too_deep,
+        }
+    }
+
+    /// Rewinds to a checkpoint: cursor, diagnostics and any split `>>` tokens.
+    pub(crate) fn restore(&mut self, cp: Checkpoint) {
+        while self.splits.len() > cp.splits {
+            let (i, original) = self.splits.pop().expect("length checked");
+            self.tokens[i] = original;
+        }
+        self.pos = cp.pos;
+        self.diags.truncate(cp.diags);
+        self.too_deep = cp.too_deep;
     }
 
     // ---------- cursor ----------
@@ -97,12 +218,19 @@ impl Parser {
         Span::new(self.file, start.start, end)
     }
 
-    pub(crate) fn bump(&mut self) -> Token {
-        let t = self.tokens[self.pos].clone();
-        if !matches!(t.kind, TokenKind::Eof) {
+    /// Consumes the current token and returns its span. At `Eof` the cursor stays put,
+    /// so a rule that keeps bumping cannot run off the end.
+    pub(crate) fn bump(&mut self) -> Span {
+        let span = self.tokens[self.pos].span;
+        if !matches!(self.tokens[self.pos].kind, TokenKind::Eof) {
             self.pos += 1;
         }
-        t
+        span
+    }
+
+    /// The current token (cloned, for the few rules that need its value after bumping).
+    pub(crate) fn current(&self) -> Token {
+        self.tokens[self.pos].clone()
     }
 
     pub(crate) fn at_eof(&self) -> bool {
@@ -128,7 +256,7 @@ impl Parser {
 
     pub(crate) fn expect(&mut self, p: Punct) -> PResult<Span> {
         if self.at(p) {
-            Ok(self.bump().span)
+            Ok(self.bump())
         } else {
             Err(self.expected(&format!("`{}`", p.as_str())))
         }
@@ -153,7 +281,7 @@ impl Parser {
 
     pub(crate) fn expect_kw(&mut self, k: Keyword) -> PResult<Span> {
         if self.at_kw(k) {
-            Ok(self.bump().span)
+            Ok(self.bump())
         } else {
             Err(self.expected(&format!("`{}`", k.as_str())))
         }
@@ -168,13 +296,15 @@ impl Parser {
         matches!(self.peek_at(n), TokenKind::Ident(s) if &**s == word)
     }
 
+    /// An identifier; keywords are rejected (declaration names, `use` aliases, …).
     pub(crate) fn ident(&mut self, what: &str) -> PResult<Ident> {
-        match self.peek().clone() {
+        match self.peek() {
             TokenKind::Ident(name) => {
-                let span = self.bump().span;
+                let name = name.clone();
+                let span = self.bump();
                 Ok(Ident { name, span })
             }
-            TokenKind::Keyword(k) => {
+            &TokenKind::Keyword(k) => {
                 let span = self.span();
                 self.report(
                     Diagnostic::new(
@@ -194,13 +324,14 @@ impl Parser {
 
     /// A member name or argument label: identifiers and keywords (SPEC "Lexical structure").
     pub(crate) fn name(&mut self, what: &str) -> PResult<Ident> {
-        match self.peek().clone() {
+        match self.peek() {
             TokenKind::Ident(name) => {
-                let span = self.bump().span;
+                let name = name.clone();
+                let span = self.bump();
                 Ok(Ident { name, span })
             }
-            TokenKind::Keyword(k) => {
-                let span = self.bump().span;
+            &TokenKind::Keyword(k) => {
+                let span = self.bump();
                 Ok(Ident {
                     name: k.as_str().into(),
                     span,
@@ -210,10 +341,12 @@ impl Parser {
         }
     }
 
+    /// A `$variable`; the name is stored without the `$`.
     pub(crate) fn variable(&mut self, what: &str) -> PResult<Ident> {
-        match self.peek().clone() {
+        match self.peek() {
             TokenKind::Variable(name) => {
-                let span = self.bump().span;
+                let name = name.clone();
+                let span = self.bump();
                 Ok(Ident { name, span })
             }
             _ => Err(self.expected(what)),
@@ -255,6 +388,11 @@ impl Parser {
     }
 
     /// Consumes one `>` closing a generic argument list, splitting `>>`, `>=` and `>>=`.
+    ///
+    /// The lexer is context-free, so `list<list<int>>` arrives with a single `>>`
+    /// token. In a type, that token is rewritten in place to the remainder (`>`), as
+    /// if the first `>` had been consumed. The rewrite is logged in `splits` so that
+    /// [`Parser::restore`] can undo it.
     pub(crate) fn eat_close_angle(&mut self) -> bool {
         let rest = match self.peek() {
             TokenKind::Punct(Punct::Gt) => {
@@ -266,6 +404,7 @@ impl Parser {
             TokenKind::Punct(Punct::ShrEq) => Punct::Ge,
             _ => return false,
         };
+        self.splits.push((self.pos, self.tokens[self.pos].clone()));
         let tok = &mut self.tokens[self.pos];
         tok.kind = TokenKind::Punct(rest);
         tok.span.start += 1;
@@ -289,6 +428,7 @@ impl Parser {
         Fail
     }
 
+    /// Reports PHP syntax that SCB removed (`removed-syntax`), with a fix-it.
     pub(crate) fn removed(&mut self, span: Span, message: &str, fix: &str) {
         self.report(
             Diagnostic::new("removed-syntax", message)
@@ -297,6 +437,7 @@ impl Parser {
         );
     }
 
+    /// Reports syntax of a feature outside POC scope (`not-supported-in-poc`).
     pub(crate) fn not_in_poc(&mut self, span: Span, feature: &str) {
         self.report(
             Diagnostic::new(
@@ -366,7 +507,8 @@ impl Parser {
         }
     }
 
-    /// Skips to the next token that can start a top-level declaration.
+    /// Skips to the next token that can start a top-level declaration. Brace groups
+    /// are skipped whole, so a broken function body is passed over in one go.
     pub(crate) fn sync_decl(&mut self) {
         let start = self.pos;
         let mut depth = 0usize;

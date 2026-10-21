@@ -1,4 +1,9 @@
 //! S-expression dump of the AST, for golden tests. Spans are omitted.
+//!
+//! Each node becomes `(tag child child …)`. A node that fits in the line width is
+//! printed on one line; otherwise its leading atoms stay on the first line and each
+//! remaining child goes on its own indented line. The format is only for humans and
+//! golden files; nothing parses it back.
 
 use crate::ast::*;
 

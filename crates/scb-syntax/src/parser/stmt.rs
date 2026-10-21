@@ -1,11 +1,24 @@
 //! Statements and blocks (SPEC "Grammar sketch → Statements").
+//!
+//! A statement is recognized by its first token or two. Most start with a keyword
+//! (`if`, `while`, `return`, …). Three forms need a closer look because they start
+//! like expressions:
+//!
+//! - `$x: T = …` is a declaration: a variable followed by a single `:`.
+//! - `[$a, $b] = …` is a destructuring declaration: a `[` whose matching `]` is
+//!   followed by `=` (see `bracket_then_assign`); otherwise `[…]` is a list literal.
+//! - `Point { x: $x } = …` is a struct-pattern declaration: a name directly followed
+//!   by `{`, which no expression can start with.
+//!
+//! Everything else is an expression statement ending in `;`.
 
 use super::{Fail, PResult, Parser};
 use crate::ast::*;
 use crate::{Diagnostic, Keyword, Punct, Span, TokenKind};
 
 impl Parser {
-    /// `{ { Statement } }`
+    /// `{ { Statement } }`. A broken statement is skipped (`sync_stmt`) and the
+    /// block carries on with the next one.
     pub(crate) fn block(&mut self) -> PResult<Block> {
         let start = self.expect(Punct::LBrace)?;
         let mut stmts = Vec::new();
@@ -51,7 +64,12 @@ impl Parser {
         }
     }
 
+    /// One statement; nested blocks recurse through here, so this counts depth.
     pub(crate) fn stmt(&mut self) -> PResult<Stmt> {
+        self.nested(Self::stmt_inner)
+    }
+
+    fn stmt_inner(&mut self) -> PResult<Stmt> {
         let start = self.span();
         let kind = match self.peek().clone() {
             TokenKind::Punct(Punct::LBrace) => StmtKind::Block(self.block()?),
@@ -65,7 +83,7 @@ impl Parser {
             }
             TokenKind::Keyword(Keyword::Const) => {
                 self.bump();
-                StmtKind::Const(super::decl::const_tail(self, start)?)
+                StmtKind::Const(super::decl::const_tail(self, start, false)?)
             }
             TokenKind::Punct(Punct::LBracket) if self.bracket_then_assign() => {
                 self.destructure()?
@@ -169,7 +187,7 @@ impl Parser {
             TokenKind::Ident(w) if self.removed_statement(&w) => return Err(Fail),
             _ => {
                 let e = self.expr()?;
-                self.expect_stmt_end()?;
+                self.expect(Punct::Semi)?;
                 StmtKind::Expr(e)
             }
         };
@@ -179,15 +197,10 @@ impl Parser {
         })
     }
 
-    /// `;` after an expression statement, with a hint for PHP's `and` / `or` idioms.
-    fn expect_stmt_end(&mut self) -> PResult<()> {
-        if self.eat(Punct::Semi) {
-            return Ok(());
-        }
-        Err(self.expected("`;`"))
-    }
-
-    /// PHP statements that SCB removed: `switch`, `global`, `goto`.
+    /// PHP statements that SCB removed: `switch`, `global`, `goto`. These are not
+    /// keywords, so they are recognized by the identifier plus the token after it
+    /// (`switch (`, `global $x`, `goto label`) and reported; `true` means "reported,
+    /// skip this statement".
     fn removed_statement(&mut self, word: &str) -> bool {
         let span = self.span();
         match word {
@@ -231,6 +244,11 @@ impl Parser {
     }
 
     /// `[ … ] =` (but not `==` / `=>`) ahead: a destructuring declaration.
+    ///
+    /// Scans forward without consuming, matching brackets of all kinds, until the
+    /// `]` that closes the opening `[`, then checks the next token. Stops early at a
+    /// `;` or the end of input (an unclosed `[` is left to the expression parser to
+    /// report). The scan is linear in the length of the bracketed text.
     fn bracket_then_assign(&self) -> bool {
         let mut depth = 0usize;
         let mut i = self.pos;
@@ -251,7 +269,8 @@ impl Parser {
         }
     }
 
-    /// `Name {` or `\A\Name {` ahead: a struct pattern.
+    /// `Name {` or `\A\Name {` ahead: a struct pattern. No expression starts this
+    /// way, so the check is unambiguous.
     fn struct_pattern_ahead(&self) -> bool {
         let mut i = self.pos;
         if matches!(self.tokens[i].kind, TokenKind::Punct(Punct::Backslash)) {
@@ -287,6 +306,8 @@ impl Parser {
     }
 
     /// A control-flow body. Braces are mandatory (SPEC "Grammar sketch → Notes").
+    /// For PHP's braceless form the next single statement is taken as the body after
+    /// the diagnostic, which keeps the rest of the function parsing normally.
     fn body(&mut self, construct: &str) -> PResult<Block> {
         if self.at(Punct::LBrace) {
             return self.block();
@@ -424,7 +445,7 @@ impl Parser {
     /// Reports and skips PHP's `&` before a variable.
     pub(crate) fn no_reference(&mut self) {
         if self.at(Punct::Amp) && matches!(self.peek_at(1), TokenKind::Variable(_)) {
-            let span = self.bump().span;
+            let span = self.bump();
             self.removed(
                 span,
                 "`&` references are removed",
@@ -438,7 +459,7 @@ impl Parser {
         let body = self.block()?;
         let mut catches = Vec::new();
         while self.at_kw(Keyword::Catch) {
-            let catch_start = self.bump().span;
+            let catch_start = self.bump();
             self.expect(Punct::LParen)?;
             let mut var = None;
             if matches!(self.peek(), TokenKind::Variable(_)) {

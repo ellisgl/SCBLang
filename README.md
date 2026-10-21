@@ -11,6 +11,7 @@ SCB (Semi-colons and Curly Braces): a statically typed, PHP-derived language wit
 | `docs/POC_PLAN.md` | POC milestones M0–M8 with exit criteria |
 | `docs/OPEN_QUESTIONS.md` | Spec gaps found so far and how they were resolved |
 | `docs/DIAGNOSTICS.md` | Compile-error kinds, output format, `scb` exit codes |
+| `docs/ARCHITECTURE.md` | How the interpreter is put together: pipeline, crates, tests |
 | `crates/` | The Rust workspace: `scb-syntax`, `scb-types`, `scb-runtime`, `scb-stdlib`, `scb-cli`, `scb-conformance` |
 | `tests/conformance/` | Language conformance tests (format in its README) |
 | `examples/hello/` | Small program exercising args, interpolation and struct value semantics |

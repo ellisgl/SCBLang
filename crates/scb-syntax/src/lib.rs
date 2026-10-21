@@ -1,5 +1,9 @@
 //! SCB syntax: source files, spans, diagnostics, tokens, the lexer, the AST and the
-//! parser.
+//! parser: everything from raw bytes to a syntax tree.
+//!
+//! Typical use: add files to a [`SourceMap`], then call [`parse_source`] per file
+//! (which lexes, then parses). Errors come back as [`Diagnostic`]s; render them with
+//! [`Diagnostic::render`]. See `docs/ARCHITECTURE.md` for the overall pipeline.
 
 pub mod ast;
 mod diagnostic;

@@ -1,9 +1,22 @@
 //! Files, `use`, declarations, class bodies and parameters.
+//!
+//! A file is `namespace X;`, then `use` lines, then declarations (SPEC "Source files
+//! and program entry": no top-level statements). Declarations start with a keyword,
+//! optionally after modifiers (`abstract class`, `readonly struct`), so `decl` can
+//! dispatch on the first token.
+//!
+//! Class, struct, interface and enum bodies share one member parser: modifiers are
+//! collected first (in any order, then checked against the required order), and the
+//! token after them decides the member kind: `function` → method, `const` →
+//! constant, `$name` → property. The checker, not the parser, decides which members
+//! are legal where (e.g. an abstract method in a struct).
 
 use super::{Fail, PResult, Parser};
 use crate::ast::*;
 use crate::{Diagnostic, Keyword, Punct, TokenKind};
 
+/// The whole file. Never fails: errors are reported and the loop resynchronizes at
+/// the next declaration.
 pub(super) fn file(p: &mut Parser) -> File {
     if p.at(Punct::Lt) && p.at_n(1, Punct::Question) && p.at_word_n(2, "php") {
         let start = p.span();
@@ -231,7 +244,7 @@ impl Parser {
         if !self.at(Punct::Lt) {
             return Ok(());
         }
-        let start = self.bump().span;
+        let start = self.bump();
         loop {
             if self.at_word("in") || self.at_word("out") {
                 self.bump();
@@ -270,6 +283,8 @@ impl Parser {
         Ok(None)
     }
 
+    /// Placeholder return type after `missing-return-type` (the file has an error, so
+    /// no later stage relies on it).
     pub(crate) fn void_type(&self) -> Type {
         Type {
             kind: TypeKind::Void,
@@ -296,7 +311,7 @@ impl Parser {
         let start = self.span();
         let mut promote = None;
         if let Some(visibility) = self.visibility() {
-            let vis_span = self.bump().span;
+            let vis_span = self.bump();
             self.set_visibility()?;
             let readonly = self.eat_kw(Keyword::Readonly);
             if !promotable {
@@ -313,7 +328,7 @@ impl Parser {
                 readonly,
             });
         } else if self.at_kw(Keyword::Readonly) {
-            let span = self.bump().span;
+            let span = self.bump();
             self.report(
                 Diagnostic::new(
                     "syntax-error",
@@ -324,7 +339,7 @@ impl Parser {
         }
         let inout = self.eat_kw(Keyword::Inout);
         if self.at(Punct::Amp) {
-            let span = self.bump().span;
+            let span = self.bump();
             self.removed(
                 span,
                 "`&` references are removed",
@@ -416,7 +431,7 @@ impl Parser {
             && self.at_word_n(2, "set")
         {
             // `public private(set)`: the second visibility is the set visibility.
-            let start = self.bump().span;
+            let start = self.bump();
             self.expect(Punct::LParen)?;
             self.bump();
             self.expect(Punct::RParen)?;
@@ -428,6 +443,9 @@ impl Parser {
 }
 
 /// One top-level declaration. `Ok(None)` for syntax that was diagnosed and dropped.
+///
+/// Dispatches on the first token. `type X = …;` (type alias) and `declare(…);` are
+/// recognized only to be reported, so they yield `Ok(None)`.
 fn decl(p: &mut Parser) -> PResult<Option<Decl>> {
     p.attributes();
     let start = p.span();
@@ -456,7 +474,7 @@ fn decl(p: &mut Parser) -> PResult<Option<Decl>> {
         TokenKind::Keyword(Keyword::Function) => Ok(Some(Decl::Function(function_decl(p)?))),
         TokenKind::Keyword(Keyword::Const) => {
             p.bump();
-            Ok(Some(Decl::Const(const_tail(p, start)?)))
+            Ok(Some(Decl::Const(const_tail(p, start, false)?)))
         }
         TokenKind::Keyword(Keyword::Interface) => Ok(Some(Decl::Interface(interface_decl(p)?))),
         TokenKind::Keyword(Keyword::Enum) => Ok(Some(Decl::Enum(enum_decl(p)?))),
@@ -487,7 +505,7 @@ fn decl(p: &mut Parser) -> PResult<Option<Decl>> {
 fn function_decl(p: &mut Parser) -> PResult<FunctionDecl> {
     let start = p.expect_kw(Keyword::Function)?;
     if p.at(Punct::Amp) {
-        let span = p.bump().span;
+        let span = p.bump();
         p.removed(span, "`&` references are removed", "return a value");
     }
     let name = p.ident("a function name")?;
@@ -506,8 +524,16 @@ fn function_decl(p: &mut Parser) -> PResult<FunctionDecl> {
 }
 
 /// After `const`: `NAME: T = expr;`
-pub(crate) fn const_tail(p: &mut Parser, start: crate::Span) -> PResult<ConstDecl> {
-    let name = p.name("a constant name")?;
+///
+/// Class constants may be named with a keyword (`Foo::default`, SPEC "Lexical
+/// structure"); namespace and local constants may not, since a bare keyword would
+/// never refer to them (`null` is always the literal).
+pub(crate) fn const_tail(p: &mut Parser, start: crate::Span, member: bool) -> PResult<ConstDecl> {
+    let name = if member {
+        p.name("a constant name")?
+    } else {
+        p.ident("a constant name")?
+    };
     let ty = p.required_type(&format!("constant `{}`", name.name))?;
     p.expect(Punct::Eq)?;
     let value = p.expr()?;
@@ -539,7 +565,7 @@ fn class_or_struct(p: &mut Parser) -> PResult<Option<Decl>> {
                 readonly = true;
             }
             TokenKind::Keyword(Keyword::Final) => {
-                let span = p.bump().span;
+                let span = p.bump();
                 p.report(
                     Diagnostic::new(
                         "redundant-final",
@@ -760,6 +786,8 @@ fn modifier_rank(k: Keyword) -> Option<u8> {
     }
 }
 
+/// One property, method or class constant. Modifiers come first (see the module docs);
+/// `var` is accepted as `public` after a `removed-syntax` diagnostic.
 fn member(p: &mut Parser) -> PResult<Option<Member>> {
     let start = p.span();
     let mut visibility = None;
@@ -770,7 +798,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
     let mut last_rank = None;
     loop {
         if p.at_word("var") && matches!(p.peek_at(1), TokenKind::Variable(_)) {
-            let span = p.bump().span;
+            let span = p.bump();
             p.removed(
                 span,
                 "`var` is removed: properties declare a visibility",
@@ -833,7 +861,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
         TokenKind::Keyword(Keyword::Function) => {
             p.bump();
             if p.at(Punct::Amp) {
-                let span = p.bump().span;
+                let span = p.bump();
                 p.removed(span, "`&` references are removed", "return a value");
             }
             let name = p.name("a method name")?;
@@ -870,7 +898,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
                 Some(p.return_type(&what)?.unwrap_or_else(|| p.void_type()))
             };
             if p.at_word("where") {
-                let where_start = p.bump().span;
+                let where_start = p.bump();
                 while !p.at(Punct::LBrace) && !p.at(Punct::Semi) && !p.at_eof() {
                     p.bump();
                 }
@@ -896,7 +924,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
         }
         TokenKind::Keyword(Keyword::Const) => {
             p.bump();
-            let c = const_tail(p, start)?;
+            let c = const_tail(p, start, true)?;
             needs_visibility(p, &format!("constant `{}`", c.name.name));
             if kind != MethodKind::Plain || is_static || readonly || mutating {
                 p.report(

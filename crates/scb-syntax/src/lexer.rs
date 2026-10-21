@@ -1,12 +1,36 @@
 //! Lexer: SPEC "Lexical structure", numeric and string literal tables.
 //!
-//! Produces every token it can and keeps going after errors, so one run reports
-//! all lexical diagnostics of a file.
+//! Turns a file's text into a flat list of [`Token`]s ending in `Eof`. It keeps going
+//! after errors, so one run reports all lexical diagnostics of a file.
+//!
+//! # How it works
+//!
+//! [`Lexer::next_token`] skips whitespace and comments, then dispatches on the first
+//! character: identifiers and keywords, numbers, `$variables`, strings, heredocs,
+//! and finally punctuators (longest match first). Each literal is fully decoded
+//! here: numbers become `u64` values (floats keep their text so the checker can
+//! parse them at the declared width), and escapes in strings are resolved.
+//!
+//! # Interpolation
+//!
+//! A double-quoted string or heredoc becomes a [`StrLit`]: a list of text runs,
+//! `$name` parts and `{$expr}` parts. For `{$expr}` the lexer calls itself
+//! (`interpolated_expr` → `next_token`) to tokenize the embedded expression up to its
+//! matching `}`, so nested strings and braces work; the parser later parses those
+//! tokens. That recursion is the only one in the lexer and is capped by
+//! [`MAX_INTERPOLATION_DEPTH`].
+//!
+//! # Context-free on purpose
+//!
+//! The lexer never needs to know what the parser expects. That is why `>>` is one
+//! token even inside `list<list<int>>` (the parser splits it), and why `1..<3`
+//! lexes as `1`, `..<`, `3`: a `.` after digits is a decimal point only when a digit
+//! follows it.
 
 use crate::token::{Keyword, Punct, StrLit, StrPart, Token, TokenKind};
 use crate::{Diagnostic, FileId, Span};
 
-/// Lexes one file. The token list always ends with `Eof`.
+/// Lexes one file. The token list always ends with `Eof`, even after errors.
 pub fn lex(file: FileId, src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
     let mut lx = Lexer::new(file, src);
     if src.starts_with('\u{FEFF}') {
@@ -27,12 +51,25 @@ pub fn lex(file: FileId, src: &str) -> (Vec<Token>, Vec<Diagnostic>) {
     (tokens, lx.diags)
 }
 
+/// Maximum nesting of strings inside `{$…}` interpolations (`"{$a["{$b}"]}"` is 2).
+/// Each level recurses (string → interpolation → token → string), so the depth is
+/// capped; real code rarely goes past 2.
+const MAX_INTERPOLATION_DEPTH: usize = 64;
+
 struct Lexer<'a> {
     src: &'a str,
+    /// Byte offset of the next unread character. Always on a char boundary.
     pos: usize,
     file: FileId,
     diags: Vec<Diagnostic>,
-    puncts: Vec<Punct>,
+    /// Punctuators indexed by their first byte, longest first within each bucket,
+    /// so `lex_one` tries only the few that can match (maximal munch: `<=>` before
+    /// `<=` before `<`).
+    puncts: Vec<Vec<Punct>>,
+    /// Current `{$…}` nesting (see [`MAX_INTERPOLATION_DEPTH`]).
+    interpolation_depth: usize,
+    /// Set once nesting exceeded the limit; the rest of the file is abandoned.
+    too_deep: bool,
 }
 
 /// Where a string body ends.
@@ -69,12 +106,18 @@ fn is_ident_char(c: char) -> bool {
 
 impl<'a> Lexer<'a> {
     fn new(file: FileId, src: &'a str) -> Self {
+        let mut puncts = vec![Vec::new(); 128];
+        for p in Punct::longest_first() {
+            puncts[usize::from(p.as_str().as_bytes()[0])].push(p);
+        }
         Lexer {
             src,
             pos: 0,
             file,
             diags: Vec::new(),
-            puncts: Punct::longest_first(),
+            puncts,
+            interpolation_depth: 0,
+            too_deep: false,
         }
     }
 
@@ -117,6 +160,8 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// The next token, skipping trivia. Error paths in `lex_one` that produce no
+    /// token always consume at least one character, so this loop makes progress.
     fn next_token(&mut self) -> Token {
         loop {
             self.skip_trivia();
@@ -263,8 +308,8 @@ impl<'a> Lexer<'a> {
             }
             _ => {}
         }
-        if let Some(p) = self
-            .puncts
+        let bucket = self.puncts.get(c as usize).map_or(&[][..], Vec::as_slice);
+        if let Some(p) = bucket
             .iter()
             .copied()
             .find(|p| self.rest().starts_with(p.as_str()))
@@ -477,6 +522,9 @@ impl<'a> Lexer<'a> {
 
     /// `_` is allowed only between two digits.
     fn check_separators(&mut self, start: usize, raw: &str, is_digit: impl Fn(char) -> bool) {
+        if !raw.contains('_') {
+            return;
+        }
         let chars: Vec<char> = raw.chars().collect();
         for (i, &c) in chars.iter().enumerate() {
             if c != '_' {
@@ -549,6 +597,10 @@ impl<'a> Lexer<'a> {
 
     /// Scans a double-quoted or heredoc body: escapes, `$name` and `{$expr}`.
     /// In bytes mode (`b"…"`) `\x80`–`\xFF` are allowed and interpolation is an error.
+    ///
+    /// Text accumulates as bytes in `text` and is flushed into a `RawPart::Text`
+    /// whenever an interpolation part starts. For a heredoc, `term` gives the byte
+    /// where the body ends and the indentation to strip from each line.
     fn string_body(&mut self, term: Term, bytes: bool, start: usize) -> Vec<RawPart> {
         let mut parts = Vec::new();
         let mut text: Vec<u8> = Vec::new();
@@ -626,7 +678,13 @@ impl<'a> Lexer<'a> {
                         text.push(b'{');
                         continue;
                     }
+                    if self.interpolation_depth >= MAX_INTERPOLATION_DEPTH {
+                        self.abandon_too_deep(at);
+                        break;
+                    }
+                    self.interpolation_depth += 1;
                     let tokens = self.interpolated_expr(at);
+                    self.interpolation_depth -= 1;
                     flush(&mut parts, &mut text);
                     parts.push(RawPart::Expr {
                         tokens,
@@ -657,12 +715,31 @@ impl<'a> Lexer<'a> {
         parts
     }
 
+    /// Reports `too-deeply-nested` and skips the rest of the file: with the nesting
+    /// abandoned midway, nothing after this point would lex meaningfully.
+    fn abandon_too_deep(&mut self, at: usize) {
+        self.too_deep = true;
+        self.error(
+            at,
+            at + 2,
+            "too-deeply-nested",
+            format!(
+                "string interpolation is nested more than {MAX_INTERPOLATION_DEPTH} levels deep"
+            ),
+        )
+        .with_fix("build the inner strings in separate variables")
+        .push(self);
+        self.pos = self.src.len();
+    }
+
     /// Whether an unterminated string at or after `start` was already reported: a
-    /// string left open swallows the rest of the file, so report it once.
+    /// string left open swallows the rest of the file, so report it once. After
+    /// `too-deeply-nested` nothing more is reported.
     fn unterminated_since(&self, start: usize) -> bool {
-        self.diags.iter().any(|d| {
-            d.kind == "unterminated-string" && d.span.is_some_and(|s| s.start as usize >= start)
-        })
+        self.too_deep
+            || self.diags.iter().any(|d| {
+                d.kind == "unterminated-string" && d.span.is_some_and(|s| s.start as usize >= start)
+            })
     }
 
     fn bytes_interpolation(&mut self, at: usize) {
@@ -678,6 +755,8 @@ impl<'a> Lexer<'a> {
     }
 
     /// Lexes the tokens of `{$expr}` up to the matching `}` (consumed, not included).
+    /// The returned list ends with an `Eof` at the `}` so the parser can treat it as
+    /// a complete token stream.
     fn interpolated_expr(&mut self, open: usize) -> Vec<Token> {
         let mut tokens = Vec::new();
         let mut depth = 0usize;
@@ -853,7 +932,9 @@ impl<'a> Lexer<'a> {
         let nowdoc = quote == Some('\'');
 
         // Find the closing marker: a line whose content after indentation is the
-        // name, not followed by an identifier character.
+        // name, not followed by an identifier character. As in PHP 7.3+, a body line
+        // that merely starts with the marker (`EOT is done`) also closes the heredoc,
+        // so pick a marker that cannot start a line of the body.
         let mut line_start = body_start;
         let close = loop {
             if line_start > self.src.len() {

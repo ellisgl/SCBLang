@@ -819,3 +819,29 @@ fn diagnostic_positions() {
         "t.scb:4:9: error[removed-syntax]: `===` is removed\n  fix: use `==` (structural equality) or `is` (identity of class instances)"
     );
 }
+
+// ---------- review regressions ----------
+
+/// Backtracking in `match (true)` must undo `>>` splits made while trying the arm as
+/// a pattern: `A < B >> 1` is first tried as the generic type pattern `A<B>`, which
+/// splits `>>`; re-parsed as a condition it must still see `>>`.
+#[test]
+fn backtracking_restores_split_tokens() {
+    assert_eq!(
+        errors("$g: string = match (true) { A < B >> 1 => 'x', default => 'y' };"),
+        ["match-true"]
+    );
+}
+
+#[test]
+fn namespace_and_local_constants_need_identifier_names() {
+    assert_eq!(
+        file_errors("namespace A;\nconst null: int = 1;\n"),
+        ["syntax-error"]
+    );
+    assert_eq!(errors("const default: int = 1;"), ["syntax-error"]);
+    assert_eq!(
+        file_errors("namespace A;\nclass C\n{\npublic const default: int = 1;\n}\n"),
+        Vec::<&str>::new()
+    );
+}

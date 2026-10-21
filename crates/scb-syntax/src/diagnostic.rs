@@ -1,3 +1,9 @@
+//! Compile errors.
+//!
+//! A [`Diagnostic`] is built with the builder methods (`with_span`, `with_note`,
+//! `with_fix`) and rendered once at the end. The `kind` is a stable identifier that
+//! tests and tools match on; the message is for humans and may change.
+
 use std::fmt::Write as _;
 
 use crate::{SourceMap, Span};

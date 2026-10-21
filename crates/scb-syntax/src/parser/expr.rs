@@ -1,8 +1,32 @@
-//! Expressions: Pratt parsing over SPEC "Grammar sketch → Operator precedence".
+//! Expressions: SPEC "Grammar sketch → Operator precedence".
 //!
-//! Levels 1–5 (postfix, `**`, prefix operators and casts, `instanceof`, `!`) are
-//! recursive-descent functions; levels 6–18 are binary operators handled by
-//! [`Parser::binary`]; the ternary, assignment and `throw` sit above them.
+//! The precedence table is implemented top-down, loosest binding first:
+//!
+//! ```text
+//! expr          level 20  assignment (right-assoc); `throw` is a primary
+//!  └ ternary    level 19  `c ? a : b`, no unparenthesized nesting
+//!     └ binary  levels 6–18, Pratt loop driven by `binop()`'s binding powers
+//!        └ not_level        level 5  prefix `!`
+//!           └ instanceof_level  level 4
+//!              └ unary      level 3  prefix `- + ~ ++ --`, casts
+//!                 └ pow     level 2  `**` (right-assoc, exponent may be unary)
+//!                    └ postfix  level 1  `->`, `?->`, `::`, `[…]`, calls, `++`/`--`
+//!                       └ primary   literals, names, `(…)`, `[…]`, `new`, `fn`, `match`, …
+//! ```
+//!
+//! # Pratt parsing in brief
+//!
+//! Every binary operator has a *binding power* (`lbp`): higher binds tighter.
+//! `binary(min_bp)` parses one operand, then repeatedly looks at the next operator;
+//! if its power is at least `min_bp` it consumes it and parses the right operand
+//! with `binary(lbp + 1)` (left-associative) or `binary(lbp)` (right-associative).
+//! An operator weaker than `min_bp` ends the loop and is left for an outer call.
+//! Example: in `1 + 2 * 3` the `+` (28) parses its right side with `min_bp` 29;
+//! `*` (30) is stronger, so `2 * 3` becomes the right operand.
+//!
+//! Non-associative operators (comparisons, `==`, ranges) record the level they just
+//! built in `chained`, and a second operator of that level is a syntax error:
+//! `$a < $b < $c` has no meaning to pick.
 
 use super::{Fail, PResult, Parser};
 use crate::ast::*;
@@ -22,7 +46,8 @@ enum BinOpKind {
     Pipe,
 }
 
-/// Integer cast targets (SPEC "Grammar sketch": `PrimitiveType`).
+/// Cast targets (SPEC "Grammar sketch": `PrimitiveType`). Only these names make
+/// `(name) operand` a cast; anything else in parentheses is an expression.
 const CAST_TYPES: &[&str] = &[
     "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "int", "float", "string",
 ];
@@ -33,8 +58,16 @@ const REMOVED_CASTS: &[&str] = &[
 ];
 
 impl Parser {
-    /// A full expression (assignment level).
+    /// A full expression (assignment level). Every nested sub-expression (`(…)`,
+    /// arguments, elements, closure bodies, arms) comes through here, so this is
+    /// where nesting depth is counted.
     pub(crate) fn expr(&mut self) -> PResult<Expr> {
+        self.nested(Self::assignment)
+    }
+
+    /// `place = value` and compound assignments; right-associative, so
+    /// `$a = $b = 3` is `$a = ($b = 3)`.
+    fn assignment(&mut self) -> PResult<Expr> {
         let start = self.span();
         let lhs = self.ternary()?;
         let Some(op) = self.assign_op() else {
@@ -59,6 +92,7 @@ impl Parser {
         })
     }
 
+    /// `Some(None)` for `=`, `Some(Some(op))` for a compound `op=`, `None` otherwise.
     fn assign_op(&self) -> Option<Option<BinaryOp>> {
         let TokenKind::Punct(p) = self.peek() else {
             return None;
@@ -84,13 +118,17 @@ impl Parser {
     }
 
     /// `cond ? a : b`; nesting needs parentheses; `?:` is removed.
+    ///
+    /// The middle operand is a full expression (it is delimited by `?` and `:`), the
+    /// last one a binary expression, so `$c ? 1 : $d ? 2 : 3` stops at the second `?`
+    /// and is reported instead of silently picking an associativity.
     fn ternary(&mut self) -> PResult<Expr> {
         let start = self.span();
         let cond = self.binary(0)?;
         if !self.at(Punct::Question) {
             return Ok(cond);
         }
-        let q = self.bump().span;
+        let q = self.bump();
         if self.at(Punct::Colon) {
             let span = crate::Span::new(self.file, q.start, self.span().end);
             self.bump();
@@ -143,7 +181,10 @@ impl Parser {
     }
 
     /// The binary operator at the cursor: kind, left binding power, associativity.
-    fn binop(&mut self) -> Option<(BinOpKind, u8, Assoc)> {
+    /// Powers are spaced by 2 and mirror the SPEC table (level 18 `??` → 4, …,
+    /// level 6 `* / ~/ %` → 30). `instanceof`, `!` and the prefix levels are not in
+    /// this table: they are separate functions below `binary`.
+    fn binop(&self) -> Option<(BinOpKind, u8, Assoc)> {
         use BinaryOp as B;
         let op = |b| BinOpKind::Op(b);
         Some(match self.peek() {
@@ -187,16 +228,27 @@ impl Parser {
         })
     }
 
-    /// Binary operators with binding power ≥ `min_bp`.
+    /// Binary operators with binding power ≥ `min_bp` (see the module docs).
     pub(crate) fn binary(&mut self, min_bp: u8) -> PResult<Expr> {
         let start = self.span();
         let mut lhs = self.not_level()?;
         let mut chained: Option<u8> = None;
-        while let Some((kind, lbp, assoc)) = self.binop() {
+        // Each loop iteration wraps `lhs` one level deeper (`((a + b) + c) + …`), so
+        // a long chain counts toward the depth limit; `levels` undoes that at the end.
+        let mut levels = 0;
+        let result = loop {
+            let Some((kind, lbp, assoc)) = self.binop() else {
+                break Ok(lhs);
+            };
             if lbp < min_bp {
-                break;
+                break Ok(lhs);
             }
-            let tok = self.bump();
+            if !self.descend() {
+                break Err(Fail);
+            }
+            levels += 1;
+            let tok = self.current();
+            self.bump();
             if assoc == Assoc::None && chained == Some(lbp) {
                 self.report(
                     Diagnostic::new(
@@ -212,7 +264,10 @@ impl Parser {
             }
             self.removed_operator(&tok);
             let rbp = if assoc == Assoc::Right { lbp } else { lbp + 1 };
-            let rhs = self.binary(rbp)?;
+            let rhs = match self.binary(rbp) {
+                Ok(rhs) => rhs,
+                Err(Fail) => break Err(Fail),
+            };
             let span = self.span_from(start);
             lhs = match kind {
                 BinOpKind::Op(op) => Expr {
@@ -240,8 +295,9 @@ impl Parser {
                 }
             };
             chained = (assoc == Assoc::None).then_some(lbp);
-        }
-        Ok(lhs)
+        };
+        self.depth -= levels;
+        result
     }
 
     fn removed_operator(&mut self, tok: &Token) {
@@ -265,11 +321,12 @@ impl Parser {
         self.removed(tok.span, msg, fix);
     }
 
-    /// Level 5: prefix `!`.
+    /// Level 5: prefix `!`. It binds looser than `instanceof`, so
+    /// `!$x instanceof Foo` is `!($x instanceof Foo)`, as in PHP.
     fn not_level(&mut self) -> PResult<Expr> {
         if self.at(Punct::Bang) {
-            let start = self.bump().span;
-            let e = self.not_level()?;
+            let start = self.bump();
+            let e = self.nested(Self::not_level)?;
             return Ok(Expr {
                 kind: ExprKind::Unary {
                     op: UnaryOp::Not,
@@ -281,7 +338,9 @@ impl Parser {
         self.instanceof_level()
     }
 
-    /// Level 4: `expr instanceof Type-or-pattern` (non-associative).
+    /// Level 4: `expr instanceof Type-or-pattern` (non-associative). The right side
+    /// is parsed as a pattern, which covers plain types (`Foo`, `string`), generic
+    /// types (`list<int>`) and refutable patterns (`Shape::CIRCLE($r)`).
     fn instanceof_level(&mut self) -> PResult<Expr> {
         let start = self.span();
         let e = self.unary()?;
@@ -330,19 +389,19 @@ impl Parser {
             TokenKind::Punct(Punct::MinusMinus) => Some(UnaryOp::PreDec),
             TokenKind::Punct(Punct::Bang) => return self.not_level(),
             TokenKind::Punct(Punct::Amp) if matches!(self.peek_at(1), TokenKind::Variable(_)) => {
-                let span = self.bump().span;
+                let span = self.bump();
                 self.removed(
                     span,
                     "`&` references are removed",
                     "use an `inout` parameter",
                 );
-                return self.unary();
+                return self.nested(Self::unary);
             }
             _ => None,
         };
         if let Some(op) = op {
             self.bump();
-            let e = self.unary()?;
+            let e = self.nested(Self::unary)?;
             return Ok(Expr {
                 kind: ExprKind::Unary {
                     op,
@@ -359,6 +418,11 @@ impl Parser {
 
     /// `(T) operand` for the primitive cast types; `(bool)` and PHP-only casts are
     /// diagnosed. Any other parenthesized name is an expression (`(MAX) - 1`).
+    ///
+    /// For `(bool)` and the PHP casts this needs one token of look-ahead past the `)`:
+    /// they are casts only when an operand follows, since `(bool)` alone could be a
+    /// parenthesized constant. The primitive names are never values, so `(int)` is
+    /// always a cast.
     fn cast(&mut self) -> PResult<Option<Expr>> {
         if !self.at(Punct::LParen) || !self.at_n(2, Punct::RParen) {
             return Ok(None);
@@ -374,7 +438,7 @@ impl Parser {
             return Ok(None);
         }
         self.bump();
-        let ty_span = self.bump().span;
+        let ty_span = self.bump();
         self.bump();
         let cast_span = self.span_from(start);
         if is_bool {
@@ -390,7 +454,7 @@ impl Parser {
                 "convert explicitly with a method or a primitive cast",
             );
         }
-        let e = self.unary()?;
+        let e = self.nested(Self::unary)?;
         if !is_cast {
             return Ok(Some(Expr {
                 kind: ExprKind::Error,
@@ -427,6 +491,10 @@ impl Parser {
     }
 
     /// Level 2: `**`, right-associative; the exponent may carry a prefix operator.
+    ///
+    /// `**` binds tighter than unary minus on its left (`-2 ** 2` is `-(2 ** 2)`)
+    /// because `unary` calls `pow` for its operand; the exponent is parsed by
+    /// `unary`, which both allows `2 ** -1` and makes `**` right-associative.
     fn pow(&mut self) -> PResult<Expr> {
         let start = self.span();
         let base = self.postfix()?;
@@ -434,7 +502,7 @@ impl Parser {
             return Ok(base);
         }
         self.bump();
-        let exp = self.unary()?;
+        let exp = self.nested(Self::unary)?;
         Ok(Expr {
             kind: ExprKind::Binary {
                 op: BinaryOp::Pow,
@@ -446,10 +514,27 @@ impl Parser {
     }
 
     /// Level 1: member access, `::`, indexing, calls, postfix `++` / `--`.
+    ///
+    /// A loop rather than recursion: `$a->b()[0]->c` wraps the expression built so
+    /// far one step at a time, left to right. Like binary chains, each step counts
+    /// toward the depth limit.
     pub(crate) fn postfix(&mut self) -> PResult<Expr> {
+        let mut levels = 0;
+        let result = self.postfix_chain(&mut levels);
+        self.depth -= levels;
+        result
+    }
+
+    fn postfix_chain(&mut self, levels: &mut usize) -> PResult<Expr> {
         let start = self.span();
         let mut e = self.primary()?;
         loop {
+            if self.at_postfix_op() {
+                if !self.descend() {
+                    return Err(Fail);
+                }
+                *levels += 1;
+            }
             let kind = match self.peek() {
                 TokenKind::Punct(p @ (Punct::Arrow | Punct::QuestionArrow)) => {
                     let nullsafe = *p == Punct::QuestionArrow;
@@ -471,7 +556,7 @@ impl Parser {
                     }
                 }
                 TokenKind::Punct(Punct::ColonColon) => {
-                    let colons = self.bump().span;
+                    let colons = self.bump();
                     if !matches!(
                         e.kind,
                         ExprKind::Name(_) | ExprKind::SelfRef | ExprKind::Parent(_)
@@ -549,6 +634,21 @@ impl Parser {
         }
     }
 
+    fn at_postfix_op(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::Punct(
+                Punct::Arrow
+                    | Punct::QuestionArrow
+                    | Punct::ColonColon
+                    | Punct::LBracket
+                    | Punct::LParen
+                    | Punct::PlusPlus
+                    | Punct::MinusMinus
+            )
+        )
+    }
+
     /// `::<T>` explicit type arguments: user generics are out of POC scope.
     fn turbofish(&mut self) -> PResult<()> {
         let start = self.expect(Punct::Lt)?;
@@ -566,31 +666,38 @@ impl Parser {
         Ok(())
     }
 
+    /// Literals, names and the keyword-introduced expressions.
     fn primary(&mut self) -> PResult<Expr> {
         let start = self.span();
-        let kind = match self.peek().clone() {
-            TokenKind::Int(n) => {
+        // Tokens are cloned (not moved out) because `match (true)` arms may be parsed
+        // twice after backtracking.
+        let kind = match self.peek() {
+            &TokenKind::Int(n) => {
                 self.bump();
                 ExprKind::Int(n)
             }
             TokenKind::Float(f) => {
+                let f = f.clone();
                 self.bump();
                 ExprKind::Float(f)
             }
             TokenKind::Str(lit) => {
+                let lit = lit.clone();
                 self.bump();
                 self.string(lit)?
             }
             TokenKind::Bytes(b) => {
+                let b = b.clone();
                 self.bump();
                 ExprKind::Bytes(b)
             }
             TokenKind::Variable(v) => {
+                let v = v.clone();
                 self.bump();
                 ExprKind::Var(v)
             }
-            TokenKind::Ident(w) => {
-                self.removed_call(&w);
+            TokenKind::Ident(_) => {
+                self.removed_call();
                 ExprKind::Name(self.qualified_name(true)?)
             }
             TokenKind::Punct(Punct::Backslash) => ExprKind::Name(self.qualified_name(true)?),
@@ -609,7 +716,7 @@ impl Parser {
                 );
                 return Err(Fail);
             }
-            TokenKind::Keyword(k) => self.keyword_primary(k)?,
+            &TokenKind::Keyword(k) => self.keyword_primary(k)?,
             _ => return Err(self.expected("an expression")),
         };
         Ok(Expr {
@@ -619,12 +726,17 @@ impl Parser {
     }
 
     /// Calls to PHP language constructs SCB removed (`isset($x)`, `array(…)`, …).
-    fn removed_call(&mut self, word: &str) {
+    /// Reports only; the call is then parsed normally so parsing continues.
+    fn removed_call(&mut self) {
         // SPEC "Built-in statements" (Q27): these words are reserved only when followed by `(`.
+        let TokenKind::Ident(word) = self.peek() else {
+            return;
+        };
         if !self.at_n(1, Punct::LParen) {
             return;
         }
-        let fix = match word {
+        let word = word.clone();
+        let fix = match &*word {
             "isset" => "use `$map->has($k)`, `?->`, `??` or `!= null`",
             "empty" => "use `$list->isEmpty()`, `$s == ''` or `$n == 0`",
             "unset" => "use `$map->remove($k)`",
@@ -637,6 +749,9 @@ impl Parser {
         self.removed(span, &format!("`{word}()` is removed"), fix);
     }
 
+    /// Expressions introduced by a keyword: literals, `self`/`parent`, `new`, `clone`,
+    /// `fn`, `match`, `exit(…)`, `throw`, and diagnostics for keywords that are not
+    /// expressions (`function`, `echo`, `print`, `yield`).
     fn keyword_primary(&mut self, k: Keyword) -> PResult<ExprKind> {
         let start = self.span();
         Ok(match k {
@@ -756,7 +871,7 @@ impl Parser {
                 return Err(Fail);
             }
             TokenKind::Keyword(Keyword::Static) => {
-                let span = self.bump().span;
+                let span = self.bump();
                 self.not_in_poc(span, "late static binding (`new static`)");
                 self.args()?;
                 return Ok(ExprKind::Error);
@@ -918,6 +1033,9 @@ impl Parser {
         Ok(Args::List(args))
     }
 
+    /// One argument: `[label:] value`, `...spread`, `inout place`, or a `?` placeholder.
+    /// A label is any identifier or keyword followed by a single `:` (`default: 1`);
+    /// `Foo::BAR` is not a label because `::` is its own token.
     fn arg(&mut self) -> PResult<Arg> {
         let start = self.span();
         let name = if matches!(self.peek(), TokenKind::Ident(_) | TokenKind::Keyword(_))
@@ -939,7 +1057,7 @@ impl Parser {
                 TokenKind::Punct(Punct::Comma | Punct::RParen)
             )
         {
-            let span = self.bump().span;
+            let span = self.bump();
             self.not_in_poc(span, "partial application (`?` arguments)");
             ArgKind::Value(Expr {
                 kind: ExprKind::Error,
@@ -957,6 +1075,10 @@ impl Parser {
     }
 
     /// Turns a lexed string literal into a plain or interpolated string expression.
+    ///
+    /// The lexer already split the literal into text, `$name` and `{$expr}` parts and
+    /// tokenized each `{$expr}`; here every such token list is parsed by a
+    /// sub-parser, as if it were a parenthesized expression.
     fn string(&mut self, lit: crate::StrLit) -> PResult<ExprKind> {
         if lit.parts.iter().all(|p| matches!(p, StrPart::Text(_))) {
             let mut s = String::new();
@@ -976,12 +1098,13 @@ impl Parser {
                     span,
                 }),
                 StrPart::Expr { tokens, .. } => {
-                    let mut sub = Parser::new(self.file, tokens);
+                    let mut sub = self.sub_parser(tokens);
                     let e = sub.expr();
                     if e.is_ok() && !sub.at_eof() {
                         sub.expected("`}`");
                     }
                     self.diags.append(&mut sub.diags);
+                    self.too_deep |= sub.too_deep;
                     InterpPart::Expr(e?)
                 }
             });
@@ -990,6 +1113,7 @@ impl Parser {
     }
 }
 
+/// A parsed argument list: ordinary arguments, or `(...)` (first-class callable).
 pub(crate) enum Args {
     List(Vec<Arg>),
     FirstClass,

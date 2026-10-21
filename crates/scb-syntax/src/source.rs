@@ -1,6 +1,16 @@
+//! Source files and positions.
+//!
+//! Every file of a compilation is loaded into one [`SourceMap`] and named by a
+//! [`FileId`]. Positions are [`Span`]s: byte ranges into one file's text, kept small
+//! (`u32` offsets) because every token and AST node carries one. Line and column
+//! numbers are computed only when a diagnostic is printed.
+
 use std::path::{Path, PathBuf};
 
 use crate::Diagnostic;
+
+/// Largest source file accepted: spans store byte offsets as `u32`.
+const MAX_FILE_SIZE: usize = u32::MAX as usize;
 
 /// Index of a file in a [`SourceMap`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -31,13 +41,21 @@ pub struct SourceFile {
 
 impl SourceFile {
     /// 1-based line and column (column counted in codepoints) of a byte offset.
+    ///
+    /// `line_starts` is sorted, so the line is found by binary search: an exact hit is
+    /// the first byte of that line, otherwise the offset lies in the line before the
+    /// insertion point. An offset inside a multi-byte character counts as that
+    /// character.
     pub fn line_col(&self, offset: u32) -> (u32, u32) {
         let line = match self.line_starts.binary_search(&offset) {
             Ok(i) => i,
             Err(i) => i - 1,
         };
         let start = self.line_starts[line] as usize;
-        let end = (offset as usize).min(self.text.len());
+        let mut end = (offset as usize).min(self.text.len());
+        while !self.text.is_char_boundary(end) {
+            end -= 1;
+        }
         let col = self.text[start..end].chars().count();
         (line as u32 + 1, col as u32 + 1)
     }
@@ -54,8 +72,15 @@ impl SourceMap {
         SourceMap::default()
     }
 
-    /// Adds a file from raw bytes. Source files must be valid UTF-8 (SPEC "Lexical structure").
+    /// Adds a file from raw bytes. Source files must be valid UTF-8 (SPEC "Lexical
+    /// structure") and smaller than 4 GiB (offsets are `u32`).
     pub fn add(&mut self, path: &Path, bytes: Vec<u8>) -> Result<FileId, Diagnostic> {
+        if bytes.len() >= MAX_FILE_SIZE {
+            return Err(
+                Diagnostic::new("file-too-large", "source file is 4 GiB or larger")
+                    .with_note(path.display().to_string()),
+            );
+        }
         let text = String::from_utf8(bytes).map_err(|e| {
             Diagnostic::new("invalid-utf8", "source file is not valid UTF-8").with_note(format!(
                 "{}: invalid byte at offset {}",
@@ -109,6 +134,15 @@ mod tests {
         assert_eq!(file.line_col(3), (2, 1));
         // "x" is after 'h', 'é' (2 bytes) and a space: byte 3 + 4 = 7, column 4.
         assert_eq!(file.line_col(7), (2, 4));
+    }
+
+    #[test]
+    fn line_col_inside_a_multibyte_character() {
+        let mut map = SourceMap::new();
+        let id = map
+            .add(Path::new("a.scb"), "é".as_bytes().to_vec())
+            .unwrap();
+        assert_eq!(map.file(id).line_col(1), (1, 1));
     }
 
     #[test]

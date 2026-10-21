@@ -168,10 +168,10 @@ pub fn parse(source: &str) -> Result<Spec, String> {
 
     match (
         &spec.compile_error,
-        spec.stdout.is_some() || spec.runtime_error.is_some(),
+        spec.stdout.is_some() || spec.runtime_error.is_some() || spec.exit.is_some(),
     ) {
         (Some(_), true) => Err(
-            "EXPECT-COMPILE-ERROR cannot be combined with EXPECT-STDOUT or EXPECT-RUNTIME-ERROR"
+            "EXPECT-COMPILE-ERROR cannot be combined with EXPECT-STDOUT, EXPECT-RUNTIME-ERROR or EXPECT-EXIT (a compile error always exits 2)"
                 .into(),
         ),
         (None, false) => Err(
@@ -206,9 +206,10 @@ pub fn decode_escapes(s: &str) -> Result<Vec<u8>, String> {
             Some('"') => out.push(b'"'),
             Some('x') => {
                 let hex: String = chars.by_ref().take(2).collect();
+                // `from_str_radix` alone would accept a sign (`+F`).
                 let byte = u8::from_str_radix(&hex, 16)
                     .ok()
-                    .filter(|_| hex.len() == 2)
+                    .filter(|_| hex.len() == 2 && hex.chars().all(|c| c.is_ascii_hexdigit()))
                     .ok_or_else(|| format!("bad escape `\\x{hex}`"))?;
                 out.push(byte);
             }
@@ -227,7 +228,7 @@ pub fn decode_escapes(s: &str) -> Result<Vec<u8>, String> {
                 }
                 let scalar = u32::from_str_radix(&hex, 16)
                     .ok()
-                    .filter(|_| closed)
+                    .filter(|_| closed && hex.chars().all(|c| c.is_ascii_hexdigit()))
                     .and_then(char::from_u32)
                     .ok_or_else(|| format!("bad escape `\\u{{{hex}`"))?;
                 let mut buf = [0; 4];
@@ -302,6 +303,10 @@ mod tests {
             ),
             ("// EXPECT-EXIT: one\n// EXPECT-STDOUT:\n", "bad exit code"),
             ("// EXPECT-STDOUT:\n// EXPECT-STDOUT:\n", "twice"),
+            (
+                "// EXPECT-COMPILE-ERROR: x\n// EXPECT-EXIT: 2\n",
+                "cannot be combined",
+            ),
         ] {
             let e = parse(src).unwrap_err();
             assert!(e.contains(why), "{src:?}: {e}");
@@ -323,6 +328,8 @@ mod tests {
         );
         assert!(decode_escapes(r"\q").is_err());
         assert!(decode_escapes(r"\x4").is_err());
+        assert!(decode_escapes(r"\x+F").is_err());
+        assert!(decode_escapes(r"\u{+41}").is_err());
         assert!(decode_escapes(r"\u{D800}").is_err());
         assert!(decode_escapes(r"\u{41").is_err());
     }

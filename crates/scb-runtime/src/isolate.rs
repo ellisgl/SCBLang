@@ -1,3 +1,10 @@
+//! The [`Isolate`]: one execution of a program, with all of its state.
+//!
+//! Embedders (the CLI now, `scb-fpm` later) build an [`IsolateIo`] from whatever I/O
+//! they have and hand it over; interpreter and stdlib code reach the outside world
+//! only through the isolate's methods. This is what lets a server run many isolates
+//! side by side with different stdin/stdout/env and no shared state.
+
 use std::collections::HashMap;
 use std::io::{self, BufRead, BufWriter, Read, Write};
 use std::sync::Arc;
