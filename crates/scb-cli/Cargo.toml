@@ -1,0 +1,19 @@
+[package]
+name = "scb-cli"
+description = "The scb command-line tool: scb run, scb check"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "scb"
+path = "src/main.rs"
+
+[dependencies]
+scb-syntax.workspace = true
+scb-types.workspace = true
+scb-runtime.workspace = true
+scb-stdlib.workspace = true
+
+[lints]
+workspace = true

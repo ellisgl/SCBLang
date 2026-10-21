@@ -1,0 +1,12 @@
+[package]
+name = "scb-runtime"
+description = "SCB isolate, value representation, interpreter and throwables"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+scb-types.workspace = true
+
+[lints]
+workspace = true

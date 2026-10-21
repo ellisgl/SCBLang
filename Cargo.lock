@@ -3,5 +3,40 @@
 version = 4
 
 [[package]]
-name = "SCB"
+name = "scb-cli"
 version = "0.1.0"
+dependencies = [
+ "scb-runtime",
+ "scb-stdlib",
+ "scb-syntax",
+ "scb-types",
+]
+
+[[package]]
+name = "scb-conformance"
+version = "0.1.0"
+
+[[package]]
+name = "scb-runtime"
+version = "0.1.0"
+dependencies = [
+ "scb-types",
+]
+
+[[package]]
+name = "scb-stdlib"
+version = "0.1.0"
+dependencies = [
+ "scb-runtime",
+]
+
+[[package]]
+name = "scb-syntax"
+version = "0.1.0"
+
+[[package]]
+name = "scb-types"
+version = "0.1.0"
+dependencies = [
+ "scb-syntax",
+]

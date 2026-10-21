@@ -1,0 +1,12 @@
+[package]
+name = "scb-types"
+description = "SCB name resolution, type checking, flow typing and the typed program"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+scb-syntax.workspace = true
+
+[lints]
+workspace = true

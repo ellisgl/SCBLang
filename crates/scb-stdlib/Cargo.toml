@@ -1,0 +1,12 @@
+[package]
+name = "scb-stdlib"
+description = "SCB core library: methods on built-in types, Io, Env, Math, Str"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+scb-runtime.workspace = true
+
+[lints]
+workspace = true
