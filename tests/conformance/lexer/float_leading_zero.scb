@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: invalid-number
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: f64 = 01.5;
+}

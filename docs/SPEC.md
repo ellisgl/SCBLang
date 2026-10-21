@@ -80,7 +80,7 @@ The `$` sigil is kept on variables and properties.
 
 ## Lexical structure
 
-- **Encoding:** UTF-8 required. A BOM is a compile error (the formatter strips it). LF and CRLF accepted; the formatter normalizes to LF.
+- **Encoding:** UTF-8 required. A BOM is a compile error (the formatter strips it). LF and CRLF accepted; the formatter normalizes to LF. A CRLF inside a string, heredoc or nowdoc literal is read as LF, so a literal's value never depends on the file's line endings (`"\r\n"` still produces CRLF).
 - **Identifiers:** ASCII only, `[A-Za-z_][A-Za-z0-9_]*`. Unicode is allowed in strings and comments.
 - **Case:** everything is case-sensitive: functions, classes, namespaces, keywords. Keywords are lowercase only. Namespace-to-directory matching is case-exact.
 - **Variables:** `$` + identifier; `$this` reserved. Superglobals (`$_GET`, `$_POST`, `$_SERVER`, …) are removed.
@@ -114,9 +114,9 @@ Numeric literals:
 
 | Form | Example | Rule |
 | --- | --- | --- |
-| Decimal / hex / octal / binary | `255`, `0xFF`, `0o377`, `0b1111` | No legacy `0377` octal |
+| Decimal / hex / octal / binary | `255`, `0xFF`, `0o377`, `0b1111` | No legacy `0377` octal; no leading zeros. Prefixes are lowercase only (`0X1F` is an error); hex digits may be either case |
 | Separators | `1_000_000` | `_` only between digits |
-| Float | `0.5`, `1.5e-3`, `1e10` | Leading digit required (no `.5`); no trailing dot (no `1.`) |
+| Float | `0.5`, `1.5e-3`, `1e10` | Leading digit required (no `.5`); no trailing dot (no `1.`); no leading zeros (no `01.5`); exponent marker `e` lowercase only (no `1E5`) |
 | Suffixes | none | Spelling sets the kind (`1` int, `1.0` float); the declared type sets the width (see Numerics) |
 | Special values | `f64::NAN`, `f64::INFINITY` | No global `NAN` / `INF` |
 
@@ -126,10 +126,10 @@ String literals:
 | --- | --- |
 | `'single'` | `\\` and `\'` only |
 | `"double"` | `\n \t \r \v \e \f \0 \\ \$ \"`, `\u{1F600}` (valid scalar, no surrogates), `\x00`–`\x7F` |
-| `b"bytes"` | Same plus `\x80`–`\xFF`; type `bytes` |
+| `b"bytes"` | Same plus `\x80`–`\xFF`; type `bytes`. No interpolation: an unescaped `$` is a compile error (`bytes-interpolation`); write `\$` |
 | Heredoc / nowdoc | Kept, with flexible closing-marker indentation |
 
-Octal escapes are dropped. Unknown escapes (`"\q"`) are a compile error.
+Octal escapes are dropped. Unknown escapes (`"\q"`) are a compile error. `\0` followed by a digit (`"\012"`) is a compile error (`unknown-escape`), since PHP reads it as octal; write `\x0A`, or `\0` then `\x31` for NUL followed by a digit.
 
 ## Numerics
 
@@ -218,6 +218,7 @@ Interpolation:
 
 - `"$name"` and `"{$expr}"`; `{}` accepts any expression. Single quotes do not interpolate. Heredoc and nowdoc are kept.
 - The simple form is `$name` only. `$name` immediately followed by `->`, `?->` or `[` is a compile error (`ambiguous-interpolation`, fix-it: `{$name->prop}`); PHP's one-level `"$a->b"` / `"$a[0]"` forms are not supported, so nothing is silently printed literally. For a literal `->` after a variable write `{$name}->`.
+- PHP's `"${name}"` form is a compile error (`invalid-interpolation`, fix-it: `{$name}`).
 - Interpolated values, `echo` / `print` operands and `(string)` operands must be `Stringable`: `string`, ints and floats (format: see Casts and conversions) are; a union is when every member is (`int|string` prints whichever value it holds). Anything else, including `bool` and `?T` (`null` is not `Stringable`), is a compile error. `bool` has no string conversion at all (not via `echo`, interpolation or `(string)`); the diagnostic's fix-it is `$b ? 'true' : 'false'`.
 
 ## Collections and values

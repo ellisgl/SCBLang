@@ -425,7 +425,7 @@ impl<'a> Lexer<'a> {
                 }
             }
         }
-        // SPEC-OPEN: Q26 — only lowercase `e` (like the lowercase `0x`/`0o`/`0b` prefixes).
+        // SPEC "Lexical structure" (Q26): only lowercase `e` (like the lowercase `0x`/`0o`/`0b` prefixes).
         if self.peek() == Some('e') {
             let sign = usize::from(matches!(self.peek_at(1), Some('+' | '-')));
             if self.peek_at(1 + sign).is_some_and(|d| d.is_ascii_digit()) {
@@ -439,7 +439,7 @@ impl<'a> Lexer<'a> {
         let int_part = &self.src[start..int_end];
         let leading_zero = int_part.len() > 1 && int_part.starts_with('0');
         if is_float {
-            // SPEC-OPEN: Q26 — leading zeros in float literals.
+            // SPEC "Lexical structure" (Q26): leading zeros in float literals.
             if leading_zero {
                 self.error(
                     start,
@@ -607,7 +607,7 @@ impl<'a> Lexer<'a> {
                     });
                 }
                 '$' if self.peek_at(1) == Some('{') => {
-                    // SPEC-OPEN: Q25 — PHP's `${name}` form is rejected rather than printed literally.
+                    // SPEC "Strings" (Q25): PHP's `${name}` form is rejected rather than printed literally.
                     self.pos += 2;
                     self.error(
                         at,
@@ -634,7 +634,7 @@ impl<'a> Lexer<'a> {
                     });
                 }
                 '\r' if self.peek_at(1) == Some('\n') => {
-                    // SPEC-OPEN: Q23 — source CRLF inside a literal becomes LF.
+                    // SPEC "Lexical structure" (Q23): source CRLF inside a literal becomes LF.
                     self.bump();
                 }
                 '\n' => {
@@ -666,7 +666,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn bytes_interpolation(&mut self, at: usize) {
-        // SPEC-OPEN: Q22 — interpolation in `b"…"` literals.
+        // SPEC "Lexical structure" (Q22): interpolation in `b"…"` literals.
         self.error(
             at,
             self.pos,
@@ -726,7 +726,7 @@ impl<'a> Lexer<'a> {
             '$' => Some(b'$'),
             '"' => Some(b'"'),
             '0' if self.peek().is_some_and(|d| d.is_ascii_digit()) => {
-                // SPEC-OPEN: Q24 — `\0` followed by a digit looks like a PHP octal escape.
+                // SPEC "Lexical structure" (Q24): `\0` followed by a digit looks like a PHP octal escape.
                 self.error(
                     at,
                     self.pos + 1,
@@ -734,7 +734,7 @@ impl<'a> Lexer<'a> {
                     "octal escapes are removed",
                 )
                 .with_note("`\\0` is NUL; a following digit would silently change meaning from PHP")
-                .with_fix("use `\\x..` or `\\u{..}`")
+                .with_fix("write `\\x0A`, or `\\0` then `\\x31` for NUL followed by a digit")
                 .push(self);
                 None
             }

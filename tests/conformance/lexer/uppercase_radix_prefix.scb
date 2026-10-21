@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: invalid-number
+
+namespace Conformance;
+
+// Radix prefixes are lowercase only; hex digits may be either case (0xFF is fine).
+function main(): void
+{
+    $x: int = 0X1F;
+}
