@@ -431,7 +431,12 @@ impl<'a> Interp<'a> {
                 self.call_func(*func, Some(receiver.clone()), args, &[], span)
                     .0
             }
-            crate::value::FuncValue::Builtin { func, receiver } => {
+            crate::value::FuncValue::Builtin {
+                func,
+                receiver,
+                ret,
+            } => {
+                self.iso.ret_hint = Some(*ret);
                 self.call_func(*func, receiver.clone(), args, &[], span).0
             }
         }
@@ -644,7 +649,7 @@ impl<'a> Interp<'a> {
             seen.push(Rc::as_ptr(&o));
             let o = o.borrow();
             let class = &self.program.decls.ty(o.decl).name;
-            let Some(NativeState::Throwable(t)) = &o.native else {
+            let Some(NativeState::Throwable(t)) = o.native.as_deref() else {
                 break;
             };
             let head = if first { heading } else { "Caused by" };

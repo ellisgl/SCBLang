@@ -74,11 +74,11 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `missing-case-arguments` | Data-carrying enum case used without arguments | Enums and match |
 | `missing-parent-constructor-call` | Subclass constructor does not call `parent::__construct()` exactly once | Structs, classes and interfaces |
 | `missing-return-type` | Function, method, closure or function type without a return type | Grammar sketch → Notes |
-| `mutating-temporary` | Write or `inout` through a value-typed temporary | Nested mutation |
+| `mutating-temporary` | Write or `inout` through a value-typed temporary; a `mutating` method of a value type used as a function value (Q44) | Nested mutation |
 | `namespace-mismatch` | Directory mode with differing namespaces | Modules and packages |
 | `non-bool-condition` | Condition (`if`, `while`, ternary, …) not of type `bool` | Type system |
 | `non-exhaustive-match` | `match` not covering every case (guarded arms do not count) | Enums and match |
-| `not-supported-in-poc` | Syntax of a feature outside POC scope | Implementation plan → POC scope |
+| `not-supported-in-poc` | Syntax of a feature outside POC scope; also a map key or set element type hashed by a user `hash()` | Implementation plan → POC scope |
 | `override-final` | Overriding a `final` method | Structs, classes and interfaces |
 | `prelude-name-redeclared` | Type, function or constant named after a prelude name | Lexical structure |
 | `redeclared-variable` | Declaring or binding a name that is still visible | Type system |
@@ -94,6 +94,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `unsigned-negation` | Unary `-` on a non-literal unsigned value | Numerics |
 | `write-through-nullsafe` | Write or `inout` through `?->` | Nested mutation |
 | `abstract-method` | Abstract method outside an abstract class, or a non-interface method without a body | Structs, classes and interfaces |
+| `abstract-call` | Calling a method without a body where nothing dispatches: `parent::m()`, `parent(I)::m()`, `X::m()`, `X::m(...)` | Structs, classes and interfaces |
 | `clone-value-type` | `clone` on a struct or enum (assignment already copies) | clone |
 | `default-method-conflict` | Two interface defaults for one method, not overridden by the class | Default-method conflicts |
 | `duplicate-declaration` | A type, function, constant, member or enum case declared twice | Modules and packages |

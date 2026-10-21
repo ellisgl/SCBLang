@@ -21,7 +21,7 @@ fn with_state<T>(c: &NativeCall, f: impl FnOnce(&mut ThrowableState) -> T) -> Op
     let Value::Object(o) = &c.receiver else {
         return None;
     };
-    match &mut o.borrow_mut().native {
+    match o.borrow_mut().native.as_deref_mut() {
         Some(NativeState::Throwable(t)) => Some(f(t)),
         _ => None,
     }

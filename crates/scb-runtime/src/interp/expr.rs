@@ -188,7 +188,7 @@ impl Interp<'_> {
                     captures,
                 }))
             }
-            K::CallableRef(target) => self.callable_ref(target)?,
+            K::CallableRef(target) => self.callable_ref(target, e.ty)?,
             K::Range {
                 start,
                 end,
@@ -453,9 +453,14 @@ impl Interp<'_> {
                     FuncValue::Method { receiver, func } => {
                         (*func, Some(receiver.clone()), Vec::new())
                     }
-                    FuncValue::Builtin { func, receiver } => (*func, receiver.clone(), Vec::new()),
+                    FuncValue::Builtin { func, receiver, .. } => {
+                        (*func, receiver.clone(), Vec::new())
+                    }
                 };
                 let (vals, inouts) = self.eval_args(fid, args)?;
+                if let FuncValue::Builtin { ret, .. } = &**fv {
+                    self.iso.ret_hint = Some(*ret);
+                }
                 let (r, mut end) = self.call_func(fid, this, vals, &captures, span);
                 self.write_back(inouts, &mut end)?;
                 r
@@ -551,7 +556,8 @@ impl Interp<'_> {
         r
     }
 
-    fn callable_ref(&mut self, target: &CallTarget) -> R<Value> {
+    /// A function value; `ty` is its `fn(…)` type.
+    fn callable_ref(&mut self, target: &CallTarget, ty: scb_types::ty::Ty) -> R<Value> {
         let fv = match target {
             CallTarget::Func(f) => FuncValue::Func(*f),
             CallTarget::Method {
@@ -571,6 +577,10 @@ impl Interp<'_> {
                 receiver: match receiver.as_deref() {
                     Some(r) => Some(self.receiver_value(r)?),
                     None => None,
+                },
+                ret: match self.program.types.kind(ty) {
+                    TyKind::Fn(f) => f.ret,
+                    _ => self.program.funcs[func.0 as usize].ret,
                 },
             },
             CallTarget::Parent { func, .. } => FuncValue::Func(*func),
@@ -603,14 +613,14 @@ impl Interp<'_> {
         } else {
             let native = self.is_throwable(class).then(|| {
                 let (file, line) = self.position(span);
-                NativeState::Throwable(ThrowableState {
+                Box::new(NativeState::Throwable(ThrowableState {
                     message: String::new(),
                     code: 0,
                     previous: None,
                     file,
                     line,
                     trace: self.trace(span),
-                })
+                }))
             });
             Value::Object(Rc::new(RefCell::new(ObjectValue {
                 decl: class,
@@ -625,6 +635,7 @@ impl Interp<'_> {
                 match self.eval_init(init) {
                     Ok(v) => super::set_field(&mut obj, *idx, v),
                     Err(e) => {
+                        unconstructed(&obj);
                         self.abandon_args(vals, inouts)?;
                         return Err(e);
                     }
@@ -635,6 +646,11 @@ impl Interp<'_> {
             return Ok(obj);
         };
         let (r, mut end) = self.call_func(ctor, Some(obj), vals, &[], span);
+        if r.is_err()
+            && let Some(this) = &end.this
+        {
+            unconstructed(this);
+        }
         self.write_back(inouts, &mut end)?;
         r?;
         Ok(end.this.unwrap_or_default())
@@ -680,6 +696,15 @@ impl Interp<'_> {
             format!("{shown} is not a value of `{name}`"),
             span,
         ))
+    }
+}
+
+/// An instance whose construction failed (a default or the constructor threw) is
+/// never destructed: its destructor could read properties that were never assigned.
+/// SPEC-OPEN: Q45
+fn unconstructed(obj: &Value) {
+    if let Value::Object(o) = obj {
+        o.borrow_mut().destructor = None;
     }
 }
 

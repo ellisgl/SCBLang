@@ -1,0 +1,27 @@
+// EXPECT-COMPILE-ERROR: not-supported-in-poc
+
+namespace Conformance;
+
+// A map key hashed by a user `hash()`: user `Hashable` is outside POC scope (the
+// runtime would ignore `hash()` / `equals()` and compare keys by identity).
+
+class Point implements \Hashable
+{
+    public function __construct(public $x: int) {}
+
+    public function equals($other: self): bool
+    {
+        return $this->x == $other->x;
+    }
+
+    public function hash(): int
+    {
+        return $this->x;
+    }
+}
+
+function main(): void
+{
+    $m: map<Point, int> = [];
+    $m[new Point(1)] = 1;
+}

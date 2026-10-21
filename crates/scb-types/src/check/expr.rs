@@ -690,8 +690,20 @@ impl Ctx<'_> {
         }
     }
 
-    /// Map keys and set elements must be `Hashable` (floats are not).
+    /// Map keys and set elements must be `Hashable` (floats are not). A key type
+    /// hashed by a user `hash()` is outside the POC (SPEC "POC scope" lists user
+    /// `Equatable`, `Comparable` and `Stringable`, not `Hashable`).
     pub(crate) fn require_hashable(&mut self, ty: Ty, span: Span) {
+        if self.conforms(ty, Iface::Hashable)
+            && let Some(d) = self.user_hashing(ty)
+        {
+            let name = self.decls.ty(d).name.clone();
+            self.not_in_poc(
+                span,
+                &format!("map keys and set elements hashed by a user `hash()` (`{name}`)"),
+            );
+            return;
+        }
         if !self.conforms(ty, Iface::Hashable) {
             let mut d = Diagnostic::new(
                 "unsatisfied-bound",
@@ -755,7 +767,17 @@ impl Ctx<'_> {
                 );
                 continue;
             };
-            let fty = self.decls.ty(d).fields[idx as usize].ty;
+            let field = &self.decls.ty(d).fields[idx as usize];
+            let (fty, owner, vis) = (field.ty, field.owner, field.visibility);
+            // A clone-with writes the property: visibility applies as for any write
+            // (`readonly` does not: setting it on a copy is what clone-with is for).
+            self.check_visibility(owner, vis, &format!("${}", name.name), name.span);
+            if fields.iter().any(|(i, _)| *i == idx) {
+                self.report(
+                    Diagnostic::new("wrong-arguments", format!("`{}` is given twice", name.name))
+                        .with_span(name.span),
+                );
+            }
             fields.push((idx, self.expr_as(v, fty)));
         }
         Expr {

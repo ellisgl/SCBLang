@@ -176,15 +176,26 @@ impl Isolate {
 
     /// Runs `main` with the user arguments (raw bytes; UTF-8 is checked before
     /// `main`) and returns the process exit code. Stdout is flushed at the end.
+    ///
+    /// Run it on a thread with a large stack (the CLI uses 1 GiB): the interpreter
+    /// recurses on the Rust stack per SCB call (up to 10 000 deep) and per level
+    /// when deeply nested values are freed, and running out of native stack aborts
+    /// the process instead of raising SCB's "stack overflow" fatal error.
     pub fn run(&mut self, program: &Arc<Program>, args: &[Vec<u8>]) -> RunOutcome {
         let code = Interp::new(self, program).run_main(args);
         let _ = self.flush_stdout();
         RunOutcome::Exit(code)
     }
 
-    /// Buffered write to stdout.
+    /// Buffered write to stdout. After a failure the buffer is dropped: its bytes
+    /// cannot be delivered, and keeping them would make every later flush (the one
+    /// at program end included) fail and report the same error again.
     pub fn write_stdout(&mut self, bytes: &[u8]) -> io::Result<()> {
-        self.stdout.write_all(bytes)
+        let r = self.stdout.write_all(bytes);
+        if r.is_err() {
+            self.discard_stdout();
+        }
+        r
     }
 
     /// Unbuffered write to stderr.
@@ -193,8 +204,14 @@ impl Isolate {
         self.stderr.flush()
     }
 
+    /// Flushes stdout; after a failure the buffer is dropped, as in
+    /// [`Self::write_stdout`].
     pub fn flush_stdout(&mut self) -> io::Result<()> {
-        self.stdout.flush()
+        let r = self.stdout.flush();
+        if r.is_err() {
+            self.discard_stdout();
+        }
+        r
     }
 
     /// Reads one line including its terminator; `None` at end of input.

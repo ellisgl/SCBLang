@@ -1,0 +1,21 @@
+// EXPECT-COMPILE-ERROR: static-call
+
+namespace Conformance;
+
+// `C::m(...)` makes a value from a static method; an instance method needs an instance.
+
+class Counter
+{
+    public $n: int = 5;
+
+    public function get(): int
+    {
+        return $this->n;
+    }
+}
+
+function main(): void
+{
+    $f: fn(): int = Counter::get(...);
+    echo $f(), "\n";
+}

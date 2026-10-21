@@ -1,0 +1,26 @@
+// EXPECT-STDOUT:
+// | equal
+// | 1
+namespace Conformance;
+
+// A struct with its own `equals()` stays usable with `==` and in lists; only its
+// use as a key needs `Hashable` (Q43).
+
+struct Name implements \Equatable
+{
+    public function __construct(public $s: string) {}
+
+    public function equals($other: self): bool
+    {
+        return $this->s->toLower() == $other->s->toLower();
+    }
+}
+
+function main(): void
+{
+    if (new Name('A') == new Name('a')) {
+        echo "equal\n";
+    }
+    $names: list<Name> = [new Name('x'), new Name('Y')];
+    echo $names->indexOf(new Name('y')) ?? -1, "\n";
+}

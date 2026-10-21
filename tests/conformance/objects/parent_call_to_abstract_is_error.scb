@@ -1,0 +1,23 @@
+// EXPECT-COMPILE-ERROR: abstract-call
+
+namespace Conformance;
+
+// `parent::m()` calls the parent's own method; an abstract one has no body.
+
+abstract class Shape
+{
+    abstract public function area(): int;
+}
+
+class Square extends Shape
+{
+    public function area(): int
+    {
+        return parent::area() + 1;
+    }
+}
+
+function main(): void
+{
+    echo (new Square())->area(), "\n";
+}

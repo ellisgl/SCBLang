@@ -112,6 +112,15 @@ pub fn judge(spec: &Spec, out: &Output, timeout: Duration) -> Vec<String> {
         if !found {
             fails.push(format!("stderr has no `error[{kind}]`"));
         }
+        // A test that also fails for another reason (a typo, a second mistake)
+        // proves nothing about the expected error.
+        if kind != "*" {
+            let mut others: Vec<&str> = kinds.iter().copied().filter(|k| k != kind).collect();
+            others.dedup();
+            if !others.is_empty() {
+                fails.push(format!("unexpected error kind(s): {}", others.join(", ")));
+            }
+        }
         check_stderr_contains(spec, &stderr, &mut fails);
         return fails;
     }
@@ -216,8 +225,18 @@ mod tests {
             )
             .is_empty()
         );
-        assert_eq!(judge(&spec, &output(2, "", "error[other]: x"), T).len(), 1);
+        assert_eq!(judge(&spec, &output(2, "", "error[other]: x"), T).len(), 2);
         assert_eq!(judge(&spec, &output(0, "", ""), T).len(), 2);
+    }
+
+    #[test]
+    fn compile_error_tests_reject_other_kinds() {
+        let spec = parse("// EXPECT-COMPILE-ERROR: type-mismatch\n").unwrap();
+        let both = "a.scb:1:1: error[type-mismatch]: x\na.scb:2:1: error[undeclared-variable]: y";
+        let fails = judge(&spec, &output(2, "", both), T);
+        assert_eq!(fails, ["unexpected error kind(s): undeclared-variable"]);
+        let twice = "a.scb:1:1: error[type-mismatch]: x\na.scb:2:1: error[type-mismatch]: y";
+        assert!(judge(&spec, &output(2, "", twice), T).is_empty());
     }
 
     #[test]

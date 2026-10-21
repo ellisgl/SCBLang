@@ -1,0 +1,26 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+// A failed guard may have assigned before a later arm runs.
+
+enum E
+{
+    case A;
+    case B;
+}
+
+function main(): void
+{
+    $z: ?int = 1;
+    if ($z == null) {
+        return;
+    }
+    $e: E = E::B;
+    $w: int = match ($e) {
+        E::A => 0,
+        E::B if ($z = null) == null && false => 1,
+        E::B => $z,
+    };
+    echo $w, "\n";
+}

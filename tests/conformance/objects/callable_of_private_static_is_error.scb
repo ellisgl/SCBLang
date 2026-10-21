@@ -1,0 +1,19 @@
+// EXPECT-COMPILE-ERROR: visibility
+
+namespace Conformance;
+
+// Making a function value checks visibility like a call does.
+
+class Vault
+{
+    private static function secret(): string
+    {
+        return "leaked";
+    }
+}
+
+function main(): void
+{
+    $f: fn(): string = Vault::secret(...);
+    echo $f(), "\n";
+}

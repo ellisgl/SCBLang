@@ -350,7 +350,7 @@ impl Interp<'_> {
 /// Sets a throwable's `previous` (SPEC: the throwable that replaced a pending one).
 pub(crate) fn set_previous(e: &Value, previous: Value) {
     if let Value::Object(o) = e
-        && let Some(NativeState::Throwable(t)) = &mut o.borrow_mut().native
+        && let Some(NativeState::Throwable(t)) = o.borrow_mut().native.as_deref_mut()
     {
         t.previous = Some(previous);
     }
@@ -363,7 +363,7 @@ fn set_previous_if_absent(e: &Value, previous: Value) {
         {
             return;
         }
-        if let Some(NativeState::Throwable(t)) = &mut o.borrow_mut().native
+        if let Some(NativeState::Throwable(t)) = o.borrow_mut().native.as_deref_mut()
             && t.previous.is_none()
         {
             t.previous = Some(previous);

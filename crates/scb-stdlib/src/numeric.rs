@@ -137,14 +137,17 @@ fn round(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
         3 => f.ceil(),
         _ => f.trunc(),
     };
-    if !r.is_finite() || r < t.min() as f64 || r > t.max() as f64 {
+    // Checked on the integer: `t.max() as f64` rounds up (2^63 for `i64`), so a
+    // float comparison would let 2^63 through.
+    let n = r as i128;
+    if !r.is_finite() || !fits(t, n) {
         return Err(it.error(
             "CastError",
             format!("{f} does not fit in `{}`", t.name()),
             c.span,
         ));
     }
-    Ok(Value::int(t, r as i128))
+    Ok(Value::int(t, n))
 }
 
 fn op3(it: &Interp<'_>, c: &NativeCall, f: fn(i128, i128) -> i128) -> (IntTy, i128) {
@@ -284,20 +287,25 @@ fn float_exact_from(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     })
 }
 
-fn parse_float(text: &str) -> Option<f64> {
+/// A float of type `t`, parsed at its own precision (an `f32` parsed through `f64`
+/// could round twice).
+fn parse_float(text: &str, t: scb_types::ty::FloatTy) -> Option<Value> {
     // Same spelling as float literals: a leading digit, an optional sign.
     let body = text.strip_prefix(['+', '-']).unwrap_or(text);
     if !body.starts_with(|ch: char| ch.is_ascii_digit()) {
         return None;
     }
-    text.parse().ok()
+    match t {
+        scb_types::ty::FloatTy::F32 => text.parse::<f32>().ok().map(Value::F32),
+        scb_types::ty::FloatTy::F64 => text.parse::<f64>().ok().map(Value::F64),
+    }
 }
 
 fn float_parse(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let t = float_target(it, c);
     let text = c.args[0].as_str().to_string();
-    match parse_float(&text) {
-        Some(v) => Ok(Value::float(t, v)),
+    match parse_float(&text, t) {
+        Some(v) => Ok(v),
         None => Err(it.error(
             "ParseException",
             format!("'{text}' is not a valid float"),
@@ -308,7 +316,7 @@ fn float_parse(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
 
 fn float_try_parse(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let t = float_target(it, c);
-    Ok(parse_float(c.args[0].as_str()).map_or(Value::Null, |v| Value::float(t, v)))
+    Ok(parse_float(c.args[0].as_str(), t).unwrap_or(Value::Null))
 }
 
 fn float_is_nan(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {

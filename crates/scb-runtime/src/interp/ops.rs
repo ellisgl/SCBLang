@@ -18,8 +18,9 @@ use super::{Interp, R};
 use crate::value::{Value, format_float};
 
 /// Structural equality without user methods: what map keys and set elements use.
-/// Class instances compare by identity here (SPEC requires `Hashable` for keys; a
-/// user-defined `hash()` / `equals()` is not consulted for keys in the POC).
+/// This is exact for every key type the checker accepts: key types hashed by a user
+/// `hash()` are rejected (`not-supported-in-poc`), so no user method is needed here.
+/// Class instances compare by identity.
 pub fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Null, Value::Null) => true,

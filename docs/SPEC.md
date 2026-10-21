@@ -1049,7 +1049,7 @@ Also removed:
 | POC execution | Typed AST interpreter or simple bytecode VM; no JIT |
 | Shared IR backend (later) | Cranelift for both JIT and AOT object files; LLVM optional for peak AOT |
 | Value representation | Unboxed primitives from day one; heap values carry a refcount header |
-| Cycle collector | PHP-style synchronous cycle collection (Bacon–Rajan) |
+| Cycle collector | Synchronous trial-deletion cycle collection (CPython/Bacon–Rajan style) |
 | Fibers | Stackful (stack switching); choose the context-switch mechanism early, it constrains the JIT |
 | Exceptions | Explicit propagation in the interpreter; table-based unwinding with Cranelift |
 | Conformance tests | `.scb` files with expected output and expected compile errors, from day one |

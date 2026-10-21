@@ -153,21 +153,78 @@ impl Ctx<'_> {
                 iface != Iface::Stringable
                     && es.iter().all(|&e| self.conforms_inner(e, iface, visiting))
             }
-            TyKind::Range(_) => iface == Iface::Equatable,
+            // Equality of ranges is not specified yet (as values, or as the
+            // sequences they produce). SPEC-OPEN: Q46
+            TyKind::Range(_) => false,
             TyKind::Named(d, _) => self.named_conforms(d, iface, visiting),
         };
         visiting.pop();
         result
     }
 
-    fn named_conforms(&mut self, d: DeclId, iface: Iface, visiting: &mut Vec<Ty>) -> bool {
-        let explicit = self
-            .decls
+    /// Whether `d` declares `iface` itself (directly or through an interface).
+    fn explicitly(&self, d: DeclId, iface: Iface) -> bool {
+        self.decls
             .all_interfaces(d)
             .iter()
-            .any(|&i| self.decls.ty(i).name == iface.name());
-        if explicit {
+            .any(|&i| self.decls.ty(i).name == iface.name())
+    }
+
+    /// A type that implements `Hashable` itself and is reached by hashing `ty`'s
+    /// values (`ty` itself, a struct field, a list element, …): its own `hash()` and
+    /// `equals()` would decide key equality, which the POC runtime does not do.
+    pub fn user_hashing(&self, ty: Ty) -> Option<DeclId> {
+        self.user_hashing_inner(ty, &mut Vec::new())
+    }
+
+    fn user_hashing_inner(&self, ty: Ty, visiting: &mut Vec<Ty>) -> Option<DeclId> {
+        if visiting.contains(&ty) {
+            return None;
+        }
+        visiting.push(ty);
+        let found = match self.types.kind(ty) {
+            TyKind::List(e) | TyKind::Set(e) => self.user_hashing_inner(*e, visiting),
+            TyKind::Map(k, v) => {
+                let (k, v) = (*k, *v);
+                self.user_hashing_inner(k, visiting)
+                    .or_else(|| self.user_hashing_inner(v, visiting))
+            }
+            TyKind::Tuple(es) | TyKind::Union(es) => {
+                let es = es.clone();
+                es.iter()
+                    .find_map(|&e| self.user_hashing_inner(e, visiting))
+            }
+            TyKind::Named(d, _) if self.explicitly(*d, Iface::Hashable) => Some(*d),
+            TyKind::Named(d, _) => {
+                let decl = self.decls.ty(*d);
+                let inner: Vec<Ty> = decl
+                    .fields
+                    .iter()
+                    .map(|f| f.ty)
+                    .chain(
+                        decl.cases
+                            .iter()
+                            .flat_map(|c| c.payload.iter().flatten().map(|p| p.ty)),
+                    )
+                    .collect();
+                inner
+                    .iter()
+                    .find_map(|&t| self.user_hashing_inner(t, visiting))
+            }
+            _ => None,
+        };
+        visiting.pop();
+        found
+    }
+
+    fn named_conforms(&mut self, d: DeclId, iface: Iface, visiting: &mut Vec<Ty>) -> bool {
+        if self.explicitly(d, iface) {
             return true;
+        }
+        // A type with its own `equals()` gets no derived `Hashable`: a derived hash
+        // would disagree with that `equals()`. SPEC-OPEN: Q43
+        if iface == Iface::Hashable && self.explicitly(d, Iface::Equatable) {
+            return false;
         }
         let decl = self.decls.ty(d);
         match (decl.kind, iface) {

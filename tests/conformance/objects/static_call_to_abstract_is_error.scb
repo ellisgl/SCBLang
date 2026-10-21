@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: abstract-call
+
+namespace Conformance;
+
+// A static call does not dispatch: an abstract static method cannot be called.
+
+abstract class Factory
+{
+    abstract public static function make(): int;
+}
+
+function main(): void
+{
+    echo Factory::make(), "\n";
+}

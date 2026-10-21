@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 use scb_types::decls::DeclId;
 use scb_types::tir::{FuncId, LocalId};
-use scb_types::ty::{FloatTy, IntTy};
+use scb_types::ty::{FloatTy, IntTy, Ty};
 
 #[derive(Debug, Clone, Default)]
 pub enum Value {
@@ -66,7 +66,8 @@ pub struct ObjectValue {
     pub decl: DeclId,
     pub fields: Vec<Value>,
     /// State of natively implemented classes (`Throwable`'s message, code, …).
-    pub native: Option<NativeState>,
+    /// Boxed: most objects have none, and it would triple their size inline.
+    pub native: Option<Box<NativeState>>,
     /// Set for instances of a class with `__destruct`: the isolate's queue of
     /// objects whose destructor is due (see [`DestructQueue`]).
     pub destructor: Option<DestructQueue>,
@@ -84,7 +85,7 @@ impl ObjectValue {
         ObjectValue {
             decl,
             fields,
-            native,
+            native: native.map(Box::new),
             destructor: None,
         }
     }
@@ -96,11 +97,12 @@ impl Drop for ObjectValue {
     /// destructor runs, its fields then released in declaration order).
     fn drop(&mut self) {
         if let Some(queue) = self.destructor.take() {
-            let obj = ObjectValue::new(
-                self.decl,
-                std::mem::take(&mut self.fields),
-                self.native.take(),
-            );
+            let obj = ObjectValue {
+                decl: self.decl,
+                fields: std::mem::take(&mut self.fields),
+                native: self.native.take(),
+                destructor: None,
+            };
             queue.borrow_mut().push_back(obj);
         }
     }
@@ -169,10 +171,13 @@ pub enum FuncValue {
     Func(FuncId),
     /// `$obj->m(...)`: a method bound to its receiver.
     Method { receiver: Value, func: FuncId },
-    /// A core-library function or method (`$list->count(...)`): its stub.
+    /// A core-library function or method (`$list->count(...)`): its stub, and the
+    /// result type resolved where the value was made (`f64` for `sum` on a
+    /// `list<f64>`), which the native receives as `NativeCall::ret`.
     Builtin {
         func: FuncId,
         receiver: Option<Value>,
+        ret: Ty,
     },
 }
 

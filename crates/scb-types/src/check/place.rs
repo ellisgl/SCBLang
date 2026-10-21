@@ -577,6 +577,17 @@ impl Ctx<'_> {
             // Flow typing narrows only through conditions (SPEC "Type system"); the
             // write itself dropped any fact about the variable (`check_root_writable`).
             let ty = v.ty;
+            if self.appends_to_self(&place, &v, value) {
+                return Expr {
+                    kind: T::CompoundAssign {
+                        place,
+                        op: BinaryOp::Concat,
+                        value: Box::new(Self::append_tail(v)),
+                    },
+                    ty,
+                    span,
+                };
+            }
             return Expr {
                 kind: T::Assign {
                     place,
@@ -653,6 +664,71 @@ impl Ctx<'_> {
             ty: result,
             span,
         }
+    }
+
+    /// `$s = $s . a . b` on a local, which runs as `$s .= a . b` and appends in
+    /// place. Reading `$s` first would share the string and make every append copy
+    /// it (a loop of them quadratic). Equivalent because a local cannot be aliased:
+    /// only an assignment to `$s` inside the value could change it meanwhile, and then
+    /// the value is kept as written.
+    fn appends_to_self(&mut self, place: &Place, v: &Expr, value: &ast::Expr) -> bool {
+        let PlaceRoot::Local(id) = place.root else {
+            return false;
+        };
+        if !place.path.is_empty() || v.ty != Ty::STRING {
+            return false;
+        }
+        // The leftmost operand of the `.` chain must be the local itself.
+        let mut leftmost = v;
+        while let T::Binary {
+            op: BinaryOp::Concat,
+            lhs,
+            ..
+        } = &leftmost.kind
+        {
+            leftmost = lhs;
+        }
+        let reads_self = match &leftmost.kind {
+            T::Local(l) => *l == id,
+            T::Read(p) => matches!(p.root, PlaceRoot::Local(l) if l == id) && p.path.is_empty(),
+            _ => false,
+        };
+        if std::ptr::eq(leftmost, v) || !reads_self {
+            return false;
+        }
+        let name = self.frame().locals[id.0 as usize].name.clone();
+        let mut assigned = Vec::new();
+        crate::check::pattern::assigned_in_expr(value, &mut assigned);
+        !assigned.contains(&name)
+    }
+
+    /// The appended part of `(($s . a) . b)`: `a . b`, operands in order.
+    fn append_tail(v: Expr) -> Expr {
+        let mut tails = Vec::new();
+        let mut cur = v;
+        while let T::Binary {
+            op: BinaryOp::Concat,
+            lhs,
+            rhs,
+        } = cur.kind
+        {
+            tails.push(*rhs);
+            cur = *lhs;
+        }
+        let mut parts = tails.into_iter().rev();
+        let first = parts.next().expect("checked by `appends_to_self`");
+        parts.fold(first, |acc, r| {
+            let span = Span::new(acc.span.file, acc.span.start, r.span.end);
+            Expr {
+                kind: T::Binary {
+                    op: BinaryOp::Concat,
+                    lhs: Box::new(acc),
+                    rhs: Box::new(r),
+                },
+                ty: Ty::STRING,
+                span,
+            }
+        })
     }
 
     /// The type a place was declared with: writes are checked against the declared

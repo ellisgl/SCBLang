@@ -231,7 +231,22 @@ impl Ctx<'_> {
         let mut covers = Vec::new();
         let mut has_default = false;
         let mut bodies_div = true;
+        // Arms are tried in order: a condition or guard of an earlier arm may have
+        // assigned a local before a later arm runs.
+        let mut tested = Vec::new();
+        for arm in &m.arms {
+            if let ast::ArmTest::Conditions(cs) = &arm.test {
+                for c in cs {
+                    assigned_in_expr(c, &mut tested);
+                }
+            }
+            if let Some(g) = &arm.guard {
+                assigned_in_expr(g, &mut tested);
+            }
+        }
+        self.forget_assigned(&tested);
         let before = self.facts_snapshot();
+        let mut outs = Vec::new();
         for arm in &m.arms {
             self.restore_facts(before.clone());
             self.push_scope();
@@ -295,11 +310,17 @@ impl Ctx<'_> {
                         self.expr(e, expect)
                     };
                     bodies_div &= x.ty == Ty::NEVER;
+                    if x.ty != Ty::NEVER {
+                        outs.push(self.facts_snapshot());
+                    }
                     tir::ArmBody::Expr(x)
                 }
                 ast::ArmBody::Block(b) => {
                     let (b, d) = self.block(b);
                     bodies_div &= d;
+                    if !d {
+                        outs.push(self.facts_snapshot());
+                    }
                     tir::ArmBody::Block(b)
                 }
             };
@@ -312,7 +333,12 @@ impl Ctx<'_> {
                 locals,
             });
         }
-        self.restore_facts(before);
+        // Afterwards, what holds at the end of every arm that can complete.
+        if outs.is_empty() {
+            self.restore_facts(before);
+        } else {
+            self.join_facts(outs);
+        }
 
         // Exhaustiveness.
         let exhaustive =
@@ -942,7 +968,7 @@ pub(crate) fn assigned_in_expr(e: &ast::Expr, out: &mut Vec<String>) {
                 out.push(n);
             }
         }
-        A::Call { args, .. } => {
+        A::Call { args, .. } | A::New { args, .. } => {
             for a in args {
                 if let ast::ArgKind::Inout(x) = &a.kind
                     && let Some(n) = root_var(x)

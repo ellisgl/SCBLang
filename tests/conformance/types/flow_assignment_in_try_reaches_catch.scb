@@ -1,0 +1,18 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+// A `catch` can start after an assignment in the `try` body: `$z` may be null there.
+
+function main(): void
+{
+    $z: ?int = 1;
+    if ($z != null) {
+        try {
+            $z = null;
+            throw new \Exception("x");
+        } catch (\Exception) {
+            echo $z + 1, "\n";
+        }
+    }
+}

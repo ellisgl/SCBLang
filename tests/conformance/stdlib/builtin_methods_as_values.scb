@@ -1,0 +1,39 @@
+// EXPECT-STDOUT:
+// | 0.0
+// | 1.5
+// | 255
+// | u8 overflow caught
+// | 3.75
+// | 3
+namespace Conformance;
+
+// A core-library method used as a function value gets the result type resolved
+// where the value is made: `sum()` of an empty `list<f64>` is `0.0`, and a
+// `list<u8>` sum is a `u8` (it traps on `u8` overflow).
+
+function main(): void
+{
+    $empty: list<f64> = [];
+    $s: fn(): f64 = $empty->sum(...);
+    $v: f64 = $s();
+    echo $v, "\n";
+    echo $v + 1.5, "\n";
+
+    $bytes: list<u8> = [200, 55];
+    $t: fn(): u8 = $bytes->sum(...);
+    echo $t(), "\n";
+    $over: list<u8> = [200, 56];
+    $u: fn(): u8 = $over->sum(...);
+    try {
+        echo $u(), "\n";
+    } catch (\OverflowError) {
+        echo "u8 overflow caught\n";
+    }
+
+    $fs: list<f64> = [1.5, 2.25];
+    $total: fn(): f64 = $fs->sum(...);
+    echo $total(), "\n";
+    $ys: list<int> = [3, 1, 2];
+    $m: fn(): ?int = $ys->max(...);
+    echo $m() ?? -1, "\n";
+}

@@ -411,7 +411,10 @@ impl Ctx<'_> {
         let saved = self.facts_snapshot();
         self.apply_facts(if and { &lf.when_true } else { &lf.when_false });
         let (r, rf) = self.condition(rhs);
-        self.restore_facts(saved);
+        // Afterwards the right operand may or may not have run: what holds is what
+        // holds on both paths (an assignment in it drops a fact for good).
+        let after_rhs = self.facts_snapshot();
+        self.join_facts(vec![saved, after_rhs]);
         let facts = if and {
             crate::check::Facts {
                 when_true: [lf.when_true, rf.when_true].concat(),
@@ -588,10 +591,22 @@ impl Ctx<'_> {
         let saved = self.facts_snapshot();
         self.apply_facts(&facts.when_true);
         let t = self.expr(then, expect);
+        let then_out = self.facts_snapshot();
         self.restore_facts(saved.clone());
         self.apply_facts(&facts.when_false);
         let o = self.expr(otherwise, expect.or(Some(t.ty)));
-        self.restore_facts(saved);
+        let else_out = self.facts_snapshot();
+        // Afterwards, what holds at the end of both branches (that can complete).
+        let outs: Vec<_> = [(t.ty, then_out), (o.ty, else_out)]
+            .into_iter()
+            .filter(|(ty, _)| *ty != Ty::NEVER)
+            .map(|(_, f)| f)
+            .collect();
+        if outs.is_empty() {
+            self.restore_facts(saved);
+        } else {
+            self.join_facts(outs);
+        }
         let ty = self.branch_type(&[&t, &o], expect, span);
         let (t, o) = (self.coerce(t, ty), self.coerce(o, ty));
         Expr {
