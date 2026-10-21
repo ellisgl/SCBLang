@@ -26,6 +26,8 @@
 //! writing places, copy-on-write), `ops` (arithmetic, conversions, equality,
 //! ordering, hashing), `pattern` (patterns and runtime type tests).
 
+mod destruct;
+mod exclusive;
 mod expr;
 mod ops;
 mod pattern;
@@ -41,6 +43,7 @@ use scb_types::decls::{DeclId, MethodId};
 use scb_types::tir::{self, Arg, ArgValue, Body, FuncId, LocalId};
 use scb_types::ty::Ty;
 
+pub(crate) use exclusive::Exclusive;
 pub use ops::{hash_value, values_equal};
 
 use crate::isolate::{Frame, Isolate, StaticSlot};
@@ -52,8 +55,9 @@ use place::EPlace;
 pub enum Flow {
     /// A thrown throwable (an `Object`).
     Throw(Value),
-    /// `exit(code)` / `Process\exit`: unwinds, runs `finally` blocks, not catchable.
-    Exit(i32),
+    /// `exit(code)` / `Process\exit` and where it was called: unwinds, runs
+    /// `finally` blocks, not catchable.
+    Exit(i32, Span),
     Return(Value),
     /// `break n` / `continue n` (`n ≥ 1` loops to leave).
     Break(u32),
@@ -95,9 +99,16 @@ pub struct Interp<'a> {
     pub program: &'a Program,
 }
 
-/// Arguments by parameter index (`None` = omitted), and the `inout` places they
-/// were moved out of.
-pub(crate) type EvaluatedArgs = (Vec<Option<Value>>, Vec<(usize, EPlace)>);
+/// An `inout` argument: the parameter, the caller's place its value was moved out
+/// of, and the exclusivity claim on that place (released at write-back).
+pub(crate) struct Inout {
+    param: usize,
+    place: EPlace,
+    claim: Option<u64>,
+}
+
+/// Arguments by parameter index (`None` = omitted), and the `inout` arguments.
+pub(crate) type EvaluatedArgs = (Vec<Option<Value>>, Vec<Inout>);
 
 /// The final state of a call: `$this` after it (structs) and the parameters (for
 /// `inout` write-back).
@@ -114,9 +125,21 @@ impl<'a> Interp<'a> {
         iso.statics = program.statics.iter().map(|_| StaticSlot::Uninit).collect();
         iso.consts = program.consts.iter().map(|_| None).collect();
         iso.vtables.clear();
+        iso.destructors.clear();
+        iso.static_order.clear();
+        iso.exclusive.clear();
         iso.frames.clear();
         iso.calls.clear();
         iso.ret_hint = None;
+        iso.destruct_floor = 0;
+        // Objects queued by an earlier run are freed without their destructors.
+        loop {
+            let stale = std::mem::take(&mut *iso.destruct_queue.borrow_mut());
+            if stale.is_empty() {
+                break;
+            }
+            drop(stale);
+        }
         Interp { iso, program }
     }
 
@@ -210,6 +233,10 @@ impl<'a> Interp<'a> {
                 .map(|p| std::mem::take(&mut frame.locals[p.local.0 as usize]))
                 .collect(),
         };
+        // The remaining locals go in reverse declaration order (SPEC "Destructors").
+        while let Some(v) = frame.locals.pop() {
+            drop(v);
+        }
         (result, end)
     }
 
@@ -314,7 +341,11 @@ impl<'a> Interp<'a> {
                             .extend(items.iter().cloned());
                     }
                 }
-                ArgValue::Inout(p) => inouts.push((i, self.eval_place(p)?)),
+                ArgValue::Inout(p) => inouts.push(Inout {
+                    param: i,
+                    place: self.eval_place(p)?,
+                    claim: None,
+                }),
             }
         }
         if let Some((i, items)) = variadic {
@@ -322,15 +353,21 @@ impl<'a> Interp<'a> {
         }
         // Move `inout` values out only now: a by-value argument naming the same
         // variable has been read first (SPEC "Exclusivity": `f(inout $a, $a[0])`).
-        // If one cannot be taken (an index out of range), the ones already taken are
-        // put back before the error propagates.
-        for (n, (i, ep)) in inouts.iter().enumerate() {
-            match self.take(ep) {
-                Ok(v) => out[*i] = Some(v),
+        // Each claims its storage until written back, so two `inout` arguments
+        // reaching the same class property conflict (SPEC "Exclusivity"). If one
+        // cannot be taken (an index out of range, a conflict), the ones already taken
+        // are put back before the error propagates.
+        for n in 0..inouts.len() {
+            match self.take(&inouts[n].place) {
+                Ok(v) => {
+                    out[inouts[n].param] = Some(v);
+                    inouts[n].claim = self.begin_exclusive(&inouts[n].place);
+                }
                 Err(e) => {
-                    for (j, ep) in inouts.iter().take(n) {
-                        let v = out[*j].take().unwrap_or_default();
-                        let _ = self.assign(ep, v);
+                    for a in inouts.iter().take(n) {
+                        self.end_exclusive(a.claim);
+                        let v = out[a.param].take().unwrap_or_default();
+                        let _ = self.assign(&a.place, v);
                     }
                     return Err(e);
                 }
@@ -340,10 +377,13 @@ impl<'a> Interp<'a> {
     }
 
     /// Writes final `inout` parameter values back into the caller's places.
-    pub(crate) fn write_back(&mut self, inouts: Vec<(usize, EPlace)>, end: &mut CallEnd) -> R<()> {
-        for (i, ep) in inouts {
-            let v = std::mem::take(&mut end.params[i]);
-            self.assign(&ep, v)?;
+    pub(crate) fn write_back(&mut self, inouts: Vec<Inout>, end: &mut CallEnd) -> R<()> {
+        for a in &inouts {
+            self.end_exclusive(a.claim);
+        }
+        for a in inouts {
+            let v = std::mem::take(&mut end.params[a.param]);
+            self.assign(&a.place, v)?;
         }
         Ok(())
     }
@@ -413,7 +453,7 @@ impl<'a> Interp<'a> {
     /// does; it is never truncated (SPEC "Source files and program entry").
     pub fn exit_with(&mut self, code: i64, span: Span) -> Flow {
         match u8::try_from(code) {
-            Ok(c) => Flow::Exit(i32::from(c)),
+            Ok(c) => Flow::Exit(i32::from(c), span),
             Err(_) => self.error(
                 "ValueError",
                 format!("exit({code}): exit codes are 0 to 255"),
@@ -438,10 +478,10 @@ impl<'a> Interp<'a> {
         let n = self.program.decls.ty(decl).fields.len();
         let (file, line) = self.position(span);
         let trace = self.trace(span);
-        Value::Object(Rc::new(std::cell::RefCell::new(ObjectValue {
+        Value::Object(Rc::new(std::cell::RefCell::new(ObjectValue::new(
             decl,
-            fields: vec![Value::Null; n],
-            native: Some(NativeState::Throwable(ThrowableState {
+            vec![Value::Null; n],
+            Some(NativeState::Throwable(ThrowableState {
                 message,
                 code: 0,
                 previous: None,
@@ -449,7 +489,7 @@ impl<'a> Interp<'a> {
                 line,
                 trace,
             })),
-        })))
+        ))))
     }
 
     pub fn position(&self, span: Span) -> (String, i64) {
@@ -509,6 +549,16 @@ impl<'a> Interp<'a> {
             )),
             other => other,
         };
+        // Program end: `main`'s locals are gone; the statics follow (SPEC
+        // "Destructors": also after `exit`). Not after `abort` or a fatal error.
+        // SPEC-OPEN: Q41 (also at a normal end and after an uncaught throwable)
+        let result = match result {
+            Err(Flow::Abort | Flow::Fatal(_)) => result,
+            _ => match self.run_destructors().and_then(|()| self.release_statics()) {
+                Ok(()) => result,
+                Err(fatal) => Err(fatal),
+            },
+        };
         self.finish(result)
     }
 
@@ -534,7 +584,7 @@ impl<'a> Interp<'a> {
         let code = match result {
             Ok(Value::I64(code)) => code as i32,
             Ok(_) => 0,
-            Err(Flow::Exit(code)) => code,
+            Err(Flow::Exit(code, _)) => code,
             Err(Flow::Throw(e)) => {
                 let text = self.describe_throwable(&e, "Uncaught");
                 let _ = self.iso.write_stderr(text.as_bytes());

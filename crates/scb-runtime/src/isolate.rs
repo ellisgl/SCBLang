@@ -11,11 +11,11 @@ use std::sync::Arc;
 
 use scb_syntax::Span;
 use scb_types::Program;
-use scb_types::decls::DeclId;
+use scb_types::decls::{DeclId, StaticId};
 use scb_types::tir::FuncId;
 
-use crate::interp::{Interp, Natives};
-use crate::value::Value;
+use crate::interp::{Exclusive, Interp, Natives};
+use crate::value::{DestructQueue, Value};
 
 /// Stdout buffer size (SPEC: "size implementation-defined").
 const STDOUT_BUFFER: usize = 8 * 1024;
@@ -67,6 +67,9 @@ pub(crate) enum StaticSlot {
     Ready(Value),
     /// Its initializer threw this; every later access throws `StaticInitError`.
     Poisoned(Value),
+    /// Released at program end (statics are destructed in reverse initialization
+    /// order); a destructor that runs later and reads it gets `StaticInitError`.
+    Destroyed,
 }
 
 /// All interpreter state for one execution of a [`Program`]. No interpreter
@@ -88,6 +91,20 @@ pub struct Isolate {
     pub(crate) vtables: HashMap<(DeclId, FuncId), FuncId>,
     /// The result type of the builtin call about to run (see `NativeCall::ret`).
     pub(crate) ret_hint: Option<scb_types::ty::Ty>,
+    /// Objects whose destructor is due (see [`DestructQueue`]).
+    pub(crate) destruct_queue: DestructQueue,
+    /// Queue entries below this index belong to an enclosing destructor run:
+    /// while a destructor runs, only objects it released itself are destructed
+    /// inside it (so one destructor never runs in the middle of another).
+    pub(crate) destruct_floor: usize,
+    /// Each class's `__destruct`, if it has one (resolved on first use).
+    pub(crate) destructors: HashMap<DeclId, Option<FuncId>>,
+    /// Statics in the order their initializers finished (destructed in reverse).
+    pub(crate) static_order: Vec<StaticId>,
+    /// Modifying accesses in progress on class properties and statics (SPEC
+    /// "Exclusivity"), with the id that ends each.
+    pub(crate) exclusive: Vec<(u64, Exclusive)>,
+    pub(crate) next_access: u64,
     /// `Process\name()`.
     program_name: String,
 }
@@ -112,6 +129,12 @@ impl Isolate {
             consts: Vec::new(),
             vtables: HashMap::new(),
             ret_hint: None,
+            destruct_queue: DestructQueue::default(),
+            destruct_floor: 0,
+            destructors: HashMap::new(),
+            static_order: Vec::new(),
+            exclusive: Vec::new(),
+            next_access: 0,
             program_name: "scb".into(),
         }
     }
@@ -176,6 +199,29 @@ impl Isolate {
 
     pub fn env_var(&self, name: &str) -> Option<Vec<u8>> {
         self.env.get(name)
+    }
+
+    pub(crate) fn has_pending_destructors(&self) -> bool {
+        self.destruct_queue.borrow().len() > self.destruct_floor
+    }
+}
+
+impl Drop for Isolate {
+    /// Frees what is left without running destructors (after `Process\abort()`, or
+    /// objects still queued). Queued objects hold handles to the queue itself, so
+    /// it is emptied explicitly; dropping them can queue more, hence the loop.
+    fn drop(&mut self) {
+        self.statics.clear();
+        self.consts.clear();
+        self.frames.clear();
+        self.exclusive.clear();
+        loop {
+            let pending = std::mem::take(&mut *self.destruct_queue.borrow_mut());
+            if pending.is_empty() {
+                break;
+            }
+            drop(pending);
+        }
     }
 }
 

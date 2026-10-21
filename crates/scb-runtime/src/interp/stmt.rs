@@ -8,19 +8,30 @@ use super::{Flow, Interp, R};
 use crate::value::{NativeState, Value};
 
 impl Interp<'_> {
-    /// Runs a block, then releases the locals it declared (SPEC: a local's value is
-    /// released when its block ends).
+    /// Runs a block, then releases the locals it declared in reverse declaration
+    /// order and runs the destructors that became due (SPEC "Destructors": also
+    /// while a throwable or `exit` unwinds; not after `abort` or a fatal error).
     pub(crate) fn exec_block(&mut self, b: &Block) -> R<()> {
         let r = self.exec_stmts(&b.stmts);
         for l in b.locals.iter().rev() {
             *self.local(*l) = Value::Null;
         }
+        if matches!(r, Err(Flow::Abort | Flow::Fatal(_))) || !self.iso.has_pending_destructors() {
+            return r;
+        }
+        self.run_destructors()?;
         r
     }
 
+    /// Statements in order; values released by a statement (an overwritten
+    /// variable, a temporary) are destructed before the next one.
+    // SPEC-OPEN: Q41 (temporaries: end of the statement, not mid-expression)
     fn exec_stmts(&mut self, stmts: &[Stmt]) -> R<()> {
         for s in stmts {
             self.exec(s)?;
+            if self.iso.has_pending_destructors() {
+                self.run_destructors()?;
+            }
         }
         Ok(())
     }
@@ -240,8 +251,8 @@ impl Interp<'_> {
                 match (&result, &new) {
                     (Err(Flow::Throw(old)), _) => {
                         // SPEC "Errors": marked "discarded by throw / exit(n)".
-                        // M6: the spec also wants "at file:line" of the replacing
-                        // statement, which `Flow` does not carry yet.
+                        // M6: "at file:line" for a replacing `throw` (an `exit`
+                        // carries its position already).
                         let by = self.replaced_by(&new);
                         let text = format!(
                             "{}  discarded by {by}\n",
@@ -253,11 +264,12 @@ impl Interp<'_> {
                             set_previous_if_absent(n, old.clone());
                         }
                     }
-                    (Err(Flow::Exit(old)), Flow::Exit(_) | Flow::Throw(_)) => {
+                    (Err(Flow::Exit(old, at)), Flow::Exit(..) | Flow::Throw(_)) => {
                         // SPEC: the newest wins; the replaced exit is reported.
                         let by = self.replaced_by(&new);
+                        let (file, line) = self.position(*at);
                         let _ = self.iso.flush_stdout();
-                        let msg = format!("exit({old}) superseded by {by}\n");
+                        let msg = format!("exit({old}) at {file}:{line} superseded by {by}\n");
                         let _ = self.iso.write_stderr(msg.as_bytes());
                     }
                     _ => {}
@@ -269,7 +281,10 @@ impl Interp<'_> {
 
     fn replaced_by(&self, new: &Flow) -> String {
         match new {
-            Flow::Exit(c) => format!("exit({c})"),
+            Flow::Exit(c, at) => {
+                let (file, line) = self.position(*at);
+                format!("exit({c}) at {file}:{line}")
+            }
             Flow::Throw(_) => "throw".into(),
             _ => "control flow".into(),
         }

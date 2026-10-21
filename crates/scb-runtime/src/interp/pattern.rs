@@ -61,6 +61,9 @@ impl Interp<'_> {
                         s.fields.clone()
                     }
                     Value::Object(o) if self.program.decls.is_subtype(o.borrow().decl, *decl) => {
+                        for (idx, _) in fields {
+                            self.check_field(o, *idx, p.span)?;
+                        }
                         o.borrow().fields.clone()
                     }
                     _ => return Ok(false),

@@ -1,0 +1,29 @@
+// EXPECT-STDOUT:
+// | exiting
+// | ~local
+// | ~second static
+// | ~first static
+// EXPECT-EXIT: 4
+namespace Conformance;
+
+class Noisy
+{
+    public function __construct(private $name: string) {}
+    public function __destruct() { echo '~', $this->name, "\n"; }
+}
+
+class Registry
+{
+    public static $first: Noisy = new Noisy('first static');
+    public static $second: Noisy = new Noisy('second static');
+}
+
+function main(): void
+{
+    $x: Noisy = Registry::$first;
+    $y: Noisy = Registry::$second;
+    $x = new Noisy('local');
+    $y = $x;
+    echo "exiting\n";
+    exit(4);
+}

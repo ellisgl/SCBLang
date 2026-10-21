@@ -1,0 +1,14 @@
+// EXPECT-STDOUT:
+// EXPECT-EXIT: 134
+namespace Conformance;
+
+class Noisy
+{
+    public function __destruct() { \Io\eprint("~noisy\n"); }
+}
+
+function main(): void
+{
+    $n: Noisy = new Noisy();
+    \Process\abort();
+}

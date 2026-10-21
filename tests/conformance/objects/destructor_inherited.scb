@@ -1,0 +1,15 @@
+// EXPECT-STDOUT:
+// | ~base
+namespace Conformance;
+
+extendable class Base
+{
+    public function __destruct() { echo "~base\n"; }
+}
+
+class Child extends Base {}
+
+function main(): void
+{
+    $c: Child = new Child();
+}

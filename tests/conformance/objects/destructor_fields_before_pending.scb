@@ -1,0 +1,23 @@
+// EXPECT-STDOUT:
+// | ~a
+// | ~a.child
+// | ~b
+namespace Conformance;
+
+class Leaf
+{
+    public function __construct(private $name: string) {}
+    public function __destruct() { echo '~', $this->name, "\n"; }
+}
+
+class Holder
+{
+    public function __construct(private $name: string, private $child: Leaf) {}
+    public function __destruct() { echo '~', $this->name, "\n"; }
+}
+
+function main(): void
+{
+    $b: Leaf = new Leaf('b');
+    $a: Holder = new Holder('a', new Leaf('a.child'));
+}

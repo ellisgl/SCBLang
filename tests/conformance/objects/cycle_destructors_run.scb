@@ -1,0 +1,21 @@
+// SKIP: cycle collector not implemented yet (M5 stub leaks cycles; required by M7)
+// EXPECT-STDOUT:
+// | made
+// | ~node
+// | ~node
+namespace Conformance;
+
+class Node
+{
+    public $next: ?Node = null;
+    public function __destruct() { echo "~node\n"; }
+}
+
+function main(): void
+{
+    $a: Node = new Node();
+    $b: Node = new Node();
+    $a->next = $b;
+    $b->next = $a;
+    echo "made\n";
+}

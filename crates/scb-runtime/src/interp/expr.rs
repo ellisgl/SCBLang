@@ -235,12 +235,14 @@ impl Interp<'_> {
                 let Value::Object(o) = v else {
                     return Ok(v);
                 };
+                self.check_object(&o, span)?;
                 let copy = {
                     let o = o.borrow();
                     ObjectValue {
                         decl: o.decl,
                         fields: o.fields.clone(),
                         native: o.native.clone(),
+                        destructor: self.destructor_queue(o.decl),
                     }
                 };
                 let mut out = Value::Object(Rc::new(RefCell::new(copy)));
@@ -326,19 +328,26 @@ impl Interp<'_> {
     /// `??=` assigns only when the place is `null` or a map key is missing.
     fn compound(&mut self, ep: &EPlace, op: BinaryOp, value: &Expr, span: Span) -> R<Value> {
         match op {
+            // A compound assignment's access spans the right side (SPEC
+            // "Exclusivity"): a class property or static is claimed meanwhile.
             BinaryOp::Coalesce => {
                 let old = self.read_or_null(ep)?;
                 if !matches!(old, Value::Null) {
                     return Ok(old);
                 }
-                let v = self.eval(value)?;
+                let claim = self.begin_exclusive(ep);
+                let v = self.eval(value);
+                self.end_exclusive(claim);
+                let v = v?;
                 self.assign(ep, v.clone())?;
                 Ok(v)
             }
             BinaryOp::Concat => {
                 self.read(ep)?;
-                let tail = self.eval(value)?;
-                let tail = tail.as_str().to_string();
+                let claim = self.begin_exclusive(ep);
+                let tail = self.eval(value);
+                self.end_exclusive(claim);
+                let tail = tail?.as_str().to_string();
                 self.modify(ep, &mut |slot| {
                     if let Value::Str(s) = slot {
                         Rc::make_mut(s).push_str(&tail);
@@ -348,7 +357,10 @@ impl Interp<'_> {
             }
             _ => {
                 let old = self.read(ep)?;
-                let rhs = self.eval(value)?;
+                let claim = self.begin_exclusive(ep);
+                let rhs = self.eval(value);
+                self.end_exclusive(claim);
+                let rhs = rhs?;
                 let new = self.arith(op, old, rhs, span)?;
                 self.assign(ep, new.clone())?;
                 Ok(new)
@@ -455,9 +467,11 @@ impl Interp<'_> {
                 let ep = self.eval_place(p)?;
                 let (vals, inouts) = self.eval_args(fid, args)?;
                 let recv = self.take(&ep)?;
+                let claim = self.begin_exclusive(&ep);
                 self.iso.ret_hint = Some(ret);
                 let (r, mut end) = self.call_func(fid, Some(recv), vals, &[], span);
                 self.iso.ret_hint = None;
+                self.end_exclusive(claim);
                 let this = end.this.take().unwrap_or_default();
                 self.assign(&ep, this)?;
                 self.write_back(inouts, &mut end)?;
@@ -495,7 +509,9 @@ impl Interp<'_> {
     fn invoke_on_place(&mut self, fid: FuncId, ep: &EPlace, args: &[Arg], span: Span) -> R<Value> {
         let (vals, inouts) = self.eval_args(fid, args)?;
         let recv = self.take(ep)?;
+        let claim = self.begin_exclusive(ep);
         let (r, mut end) = self.call_func(fid, Some(recv), vals, &[], span);
+        self.end_exclusive(claim);
         let this = end.this.take().unwrap_or_default();
         self.assign(ep, this)?;
         self.write_back(inouts, &mut end)?;
@@ -567,6 +583,7 @@ impl Interp<'_> {
                 decl: class,
                 fields: vec![Value::Null; n],
                 native,
+                destructor: self.destructor_queue(class),
             })))
         };
         for a in program.decls.ancestors(class).into_iter().rev() {

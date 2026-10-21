@@ -1,0 +1,17 @@
+// EXPECT-RUNTIME-ERROR: ExclusivityError
+namespace Conformance;
+
+class Counter
+{
+    public static $n: int = 0;
+}
+
+function bump(inout $x: int): void
+{
+    $x += Counter::$n;
+}
+
+function main(): void
+{
+    bump(inout Counter::$n);
+}

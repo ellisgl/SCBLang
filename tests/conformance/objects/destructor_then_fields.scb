@@ -1,0 +1,22 @@
+// EXPECT-STDOUT:
+// | ~outer
+// | ~first
+// | ~second
+namespace Conformance;
+
+class Leaf
+{
+    public function __construct(private $name: string) {}
+    public function __destruct() { echo '~', $this->name, "\n"; }
+}
+
+class Outer
+{
+    public function __construct(private $first: Leaf, private $second: Leaf) {}
+    public function __destruct() { echo "~outer\n"; }
+}
+
+function main(): void
+{
+    $o: Outer = new Outer(new Leaf('first'), new Leaf('second'));
+}

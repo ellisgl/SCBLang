@@ -1,0 +1,58 @@
+// EXPECT-STDOUT:
+// | start
+// | inner end
+// | ~b
+// | ~a
+// | after block
+// | overwrite
+// | ~c
+// | after overwrite
+// | null
+// | ~d
+// | after null
+// | call
+// | ~tmp
+// | after call
+// | end of main
+// | ~c2
+// | ~m
+namespace Conformance;
+
+class Noisy
+{
+    public function __construct(private $name: string) {}
+
+    public function __destruct()
+    {
+        echo '~', $this->name, "\n";
+    }
+}
+
+function make(): void
+{
+    $t: Noisy = new Noisy('tmp');
+    echo "call\n";
+}
+
+function main(): void
+{
+    $m: Noisy = new Noisy('m');
+    echo "start\n";
+    {
+        $a: Noisy = new Noisy('a');
+        $b: Noisy = new Noisy('b');
+        echo "inner end\n";
+    }
+    echo "after block\n";
+    $c: Noisy = new Noisy('c');
+    echo "overwrite\n";
+    $c = new Noisy('c2');
+    echo "after overwrite\n";
+    $d: ?Noisy = new Noisy('d');
+    echo "null\n";
+    $d = null;
+    echo "after null\n";
+    make();
+    echo "after call\n";
+    echo "end of main\n";
+}

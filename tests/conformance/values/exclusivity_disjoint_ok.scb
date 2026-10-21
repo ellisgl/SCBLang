@@ -1,0 +1,35 @@
+// EXPECT-STDOUT:
+// | 2 1
+// | 5 3
+// | 11
+namespace Conformance;
+
+class Box
+{
+    public function __construct(public $a: int, public $b: int) {}
+}
+
+class Counter
+{
+    public static $n: int = 10;
+}
+
+function swap(inout $x: int, inout $y: int): void
+{
+    $t: int = $x;
+    $x = $y;
+    $y = $t;
+}
+
+function main(): void
+{
+    $box: Box = new Box(1, 2);
+    swap(inout $box->a, inout $box->b);
+    echo $box->a, ' ', $box->b, "\n";
+    $p: Box = new Box(3, 0);
+    $q: Box = new Box(5, 0);
+    swap(inout $p->a, inout $q->a);
+    echo $p->a, ' ', $q->a, "\n";
+    Counter::$n += 1;
+    echo Counter::$n, "\n";
+}

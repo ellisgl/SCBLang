@@ -16,7 +16,7 @@ How the SCB POC interpreter is put together, for someone opening the code for th
 | Lexer | `scb-syntax` | `lex()` | done (M1) |
 | Parser and AST | `scb-syntax` | `parse()`, `parse_source()`, `ast` | done (M2) |
 | Name resolution, type checking | `scb-types` | `check()` → `Program` (typed IR) | done (M3) |
-| Interpreter, values, refcounting | `scb-runtime` | `Isolate::run()` | M4 (destructors, runtime exclusivity: M5) |
+| Interpreter, values, refcounting | `scb-runtime` | `Isolate::run()` | M4, M5 (destructors, runtime exclusivity; cycle collector: M7) |
 | Core library | `scb-stdlib` | `natives()` | M4 (the stub API), M7 (rest) |
 | Conformance runner | `scb-conformance` | `cargo run -p scb-conformance` | done (M0) |
 
@@ -62,6 +62,8 @@ All interpreter state lives in an `Isolate`. Nothing is global; this is CLAUDE.m
 - *Writes* (`interp/place.rs`). A write evaluates the place's path first, then the right side, then walks the path making each value level unique.
 - *Moves.* `inout` arguments and `mutating` receivers move their value into the callee's frame and back out (also after a throw), so the callee mutates an unshared value in place. A loop of `push` is therefore O(n) (`scb-stdlib/tests/run.rs` guards this).
 - *Integers.* Integer operations compute in `i128` and trap on overflow.
+- *Destructors* (`interp/destruct.rs`). `Drop` cannot call into the interpreter, so an instance of a class with `__destruct` holds a handle to its isolate's destructor queue, and its `Drop` moves the object's contents there. The interpreter runs the queue after every statement and when a block releases its locals (also while unwinding), so a destructor runs before the next statement. While one destructor runs, only objects it released are destructed inside it; its object's fields follow it, ahead of anything pending. Throwing or `exit` in a destructor is fatal. At program end the statics are released in reverse initialization order. Objects in reference cycles are not destructed yet: the cycle collector is a stub until M7.
+- *Exclusivity* (`interp/exclusive.rs`). Conflicts on locals are compile errors. For class properties and statics, a modifying access that spans user code (`inout`, a `mutating` call, a compound assignment) claims the storage it modifies, which is the last class property on its path or the static at its root. Any access that reaches claimed storage throws `ExclusivityError`; with no claims active, the check is one empty-vector test.
 
 **Core library** (`scb-stdlib`): native functions registered by the names the checker gives stub declarations (`list.push`, `i8::wrap`, `Io\print`). The CLI hands them to the isolate (`Isolate::with_natives`), so the runtime does not depend on the stdlib.
 

@@ -26,13 +26,13 @@ use crate::value::{ObjectValue, Value};
 /// An evaluated place: everything computed, ready to read or write.
 #[derive(Debug, Clone)]
 pub(crate) struct EPlace {
-    root: ERoot,
-    path: Vec<EProj>,
-    span: Span,
+    pub(super) root: ERoot,
+    pub(super) path: Vec<EProj>,
+    pub(super) span: Span,
 }
 
 #[derive(Debug, Clone)]
-enum ERoot {
+pub(super) enum ERoot {
     Local(LocalId),
     Static(StaticId),
     /// The value of an expression (a class instance for writes).
@@ -40,7 +40,7 @@ enum ERoot {
 }
 
 #[derive(Debug, Clone)]
-enum EProj {
+pub(super) enum EProj {
     Field(u32),
     List(i64),
     Map(Value, u64),
@@ -106,13 +106,19 @@ impl Interp<'_> {
     pub(crate) fn read(&mut self, ep: &EPlace) -> R<Value> {
         let mut cur = match &ep.root {
             ERoot::Local(id) => self.local(*id).clone(),
-            ERoot::Static(sid) => self.static_value(*sid),
+            ERoot::Static(sid) => {
+                self.check_static(*sid, ep.span)?;
+                self.static_value(*sid)
+            }
             ERoot::Value(v) => v.clone(),
         };
         for proj in &ep.path {
             let next = match (proj, &cur) {
                 (EProj::Field(i), Value::Struct(s)) => s.fields[*i as usize].clone(),
-                (EProj::Field(i), Value::Object(o)) => o.borrow().fields[*i as usize].clone(),
+                (EProj::Field(i), Value::Object(o)) => {
+                    self.check_field(o, *i, ep.span)?;
+                    o.borrow().fields[*i as usize].clone()
+                }
                 (EProj::Tuple(i), Value::Tuple(t)) => t[*i as usize].clone(),
                 (EProj::List(i), Value::List(l)) => match index_of(*i, l.len()) {
                     Some(i) => l[i].clone(),
@@ -217,6 +223,7 @@ impl Interp<'_> {
                 walk(slot, &ep.path, &mut leaf)
             }
             ERoot::Static(sid) => {
+                self.check_static(*sid, ep.span)?;
                 let StaticSlot::Ready(slot) = &mut self.iso.statics[sid.0 as usize] else {
                     return Err(Flow::Fatal("static property not initialized".into()));
                 };
@@ -232,13 +239,12 @@ impl Interp<'_> {
             match step {
                 Step::Done(t) => return Ok(t),
                 Step::Object(obj, at) => {
-                    let mut o = obj.borrow_mut();
-                    let rest = &ep.path[at..];
-                    let Some(EProj::Field(i)) = rest.first() else {
-                        drop(o);
+                    let Some(&EProj::Field(i)) = ep.path.get(at) else {
                         return Err(self.fault(Fault::Shape, ep.span));
                     };
-                    let r = walk_from(&mut o.fields[*i as usize], &ep.path, at + 1, &mut leaf);
+                    self.check_field(&obj, i, ep.span)?;
+                    let mut o = obj.borrow_mut();
+                    let r = walk_from(&mut o.fields[i as usize], &ep.path, at + 1, &mut leaf);
                     drop(o);
                     step = r.map_err(|e| self.fault(e, ep.span))?;
                 }
@@ -289,12 +295,19 @@ impl Interp<'_> {
                 super::stmt::set_previous(&e, original);
                 Err(Flow::Throw(e))
             }
+            // SPEC-OPEN: Q41 (a static read after release at program end)
+            StaticSlot::Destroyed => {
+                let name = &self.program.decls.static_(sid).name;
+                let msg = format!("static `${name}` is used after it was released at program end");
+                Err(self.error("StaticInitError", msg, span))
+            }
             StaticSlot::Uninit => {
                 self.iso.statics[sid.0 as usize] = StaticSlot::Running;
                 let program = self.program;
                 match self.eval_init(&program.statics[sid.0 as usize]) {
                     Ok(v) => {
                         self.iso.statics[sid.0 as usize] = StaticSlot::Ready(v);
+                        self.iso.static_order.push(sid);
                         Ok(())
                     }
                     Err(Flow::Throw(e)) => {

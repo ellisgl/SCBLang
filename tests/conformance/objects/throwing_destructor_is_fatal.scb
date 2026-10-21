@@ -1,0 +1,24 @@
+// EXPECT-STDOUT:
+// | before
+// EXPECT-STDERR-CONTAINS: Fatal error
+// EXPECT-STDERR-CONTAINS: __destruct
+// EXPECT-STDERR-CONTAINS: boom
+// EXPECT-EXIT: 1
+namespace Conformance;
+
+class Bad
+{
+    public function __destruct() { throw new \Exception('boom'); }
+}
+
+function main(): void
+{
+    try {
+        $b: Bad = new Bad();
+        echo "before\n";
+    } catch (\Exception) {
+        echo "caught: must not happen\n";
+    } finally {
+        echo "finally: must not happen\n";
+    }
+}

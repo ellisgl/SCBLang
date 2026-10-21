@@ -207,3 +207,37 @@ function main(): void
 "#;
     assert_eq!(run_with_closed_stdout(src), (0, "caught\n".into()));
 }
+
+/// A long chain of destructible objects is destructed iteratively (no Rust stack
+/// growth per link), in order, each destructor before its fields.
+#[test]
+fn long_destructor_chain() {
+    let src = r#"namespace T;
+class Node
+{
+    public static $count: int = 0;
+    public function __construct(public $next: ?Node) {}
+    public function __destruct() { Node::$count++; }
+}
+function build(): void
+{
+    $head: ?Node = null;
+    for ($i: int = 0; $i < 100000; $i++) {
+        $head = new Node($head);
+    }
+}
+function main(): void
+{
+    build();
+    echo Node::$count, "\n";
+}
+"#;
+    let handle = std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || run(src))
+        .unwrap();
+    assert_eq!(
+        handle.join().unwrap(),
+        (0, "100000\n".into(), String::new())
+    );
+}

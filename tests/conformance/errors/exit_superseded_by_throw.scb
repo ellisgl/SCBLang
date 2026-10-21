@@ -1,5 +1,6 @@
 // EXPECT-RUNTIME-ERROR: Exception
-// EXPECT-STDERR-CONTAINS: exit(3) superseded by throw
+// EXPECT-STDERR-CONTAINS: exit(3) at
+// EXPECT-STDERR-CONTAINS: superseded by throw
 namespace Conformance;
 
 function main(): void

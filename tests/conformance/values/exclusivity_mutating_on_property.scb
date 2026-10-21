@@ -1,0 +1,23 @@
+// EXPECT-RUNTIME-ERROR: ExclusivityError
+namespace Conformance;
+
+struct Point
+{
+    public function __construct(public $x: int) {}
+
+    public mutating function shift($f: fn(): int): void
+    {
+        $this->x += $f();
+    }
+}
+
+class Holder
+{
+    public function __construct(public $p: Point) {}
+}
+
+function main(): void
+{
+    $h: Holder = new Holder(new Point(1));
+    $h->p->shift(fn(): int => $h->p->x);
+}

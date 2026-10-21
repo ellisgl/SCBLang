@@ -11,7 +11,7 @@
 //! `Clone` on a `Value` is therefore always cheap (a copy or a refcount increment).
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use scb_types::decls::DeclId;
@@ -67,6 +67,43 @@ pub struct ObjectValue {
     pub fields: Vec<Value>,
     /// State of natively implemented classes (`Throwable`'s message, code, …).
     pub native: Option<NativeState>,
+    /// Set for instances of a class with `__destruct`: the isolate's queue of
+    /// objects whose destructor is due (see [`DestructQueue`]).
+    pub destructor: Option<DestructQueue>,
+}
+
+/// Objects whose last reference is gone and whose `__destruct` has not run yet
+/// (SPEC "Destructors"). Owned by the isolate; each destructible object holds a
+/// handle so its `Drop` can enqueue it, since `Drop` cannot call into the
+/// interpreter. The interpreter runs the queue at statement boundaries and when a
+/// block ends, so destructors still run before the next statement.
+pub type DestructQueue = Rc<RefCell<VecDeque<ObjectValue>>>;
+
+impl ObjectValue {
+    pub fn new(decl: DeclId, fields: Vec<Value>, native: Option<NativeState>) -> ObjectValue {
+        ObjectValue {
+            decl,
+            fields,
+            native,
+            destructor: None,
+        }
+    }
+}
+
+impl Drop for ObjectValue {
+    /// The last reference is gone: if a destructor is due, move the contents to the
+    /// queue (the queued object has no handle, so it is freed for good after its
+    /// destructor runs, its fields then released in declaration order).
+    fn drop(&mut self) {
+        if let Some(queue) = self.destructor.take() {
+            let obj = ObjectValue::new(
+                self.decl,
+                std::mem::take(&mut self.fields),
+                self.native.take(),
+            );
+            queue.borrow_mut().push_back(obj);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

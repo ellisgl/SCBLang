@@ -1,0 +1,23 @@
+// EXPECT-STDOUT:
+// | caught
+// | 1 1
+namespace Conformance;
+
+class Box
+{
+    public function __construct(public $v: int) {}
+}
+
+function swap(inout $x: int, inout $y: int): void {}
+
+function main(): void
+{
+    $b: Box = new Box(1);
+    $c: Box = $b;
+    try {
+        swap(inout $b->v, inout $c->v);
+    } catch (\ExclusivityError) {
+        echo "caught\n";
+    }
+    echo $b->v, ' ', $c->v, "\n";
+}
