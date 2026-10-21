@@ -47,7 +47,7 @@ Keywords that desugar to stdlib calls (there is no global function fallback, so 
 | `exit;` / `exit($code);` | `\Process\exit($code)` | `int` only, default 0; type `never`. A string argument is a compile error. `exit(…)` is also an expression (like `throw`): `\Env\get('PORT') ?? exit(2)`. The bare `exit` without parentheses is statement-only |
 | `die` | Same as `exit` | Same as `exit` |
 
-- `isset` and `empty` are removed: use `$map->has($k)`, `?->`, `??`, `!= null`, `$list->isEmpty()`, `$s == ''`. `unset($m[$k])` becomes `$m->remove($k)`.
+- `isset` and `empty` are removed: use `$map->has($k)`, `?->`, `??`, `!= null`, `$list->isEmpty()`, `$s == ''`. `unset($m[$k])` becomes `$m->remove($k)`. `isset`, `empty`, `unset`, `array`, `list`, `eval`, `compact` and `extract` are not keywords, but followed by `(` they are a compile error (`removed-syntax`) with a fix-it naming the replacement; `$x->empty()` and `list<T>` are unaffected.
 - Magic constants kept: `::class`, `__FILE__`, `__LINE__`, `__DIR__`, `__CLASS__`, `__FUNCTION__`, `__METHOD__`, `__NAMESPACE__`. All resolve at compile time.
 - Assignment is an expression: with `$line: ?string = null;` declared, `while (($line = \Io\readLine()) != null)` works; `if ($x = foo())` compiles only when `foo()` returns `bool`.
 
@@ -58,7 +58,7 @@ Code follows PER Coding Style, enforced by the built-in formatter (`scb fmt`). D
 - No opening tag; no `declare(strict_types)`.
 - Types are postfix everywhere: `$name: string`, `const MAX: i64`, `catch ($e: IoException)`; return types `): T`.
 - Generics written `list<T>`, no inner spaces; function types written `fn(int): bool`.
-- Modifier order: `abstract` / `final` → visibility → `static` → `readonly` → `mutating` (as in PER: `final public function`); `extendable` / `abstract` before `class`.
+- Modifier order: `abstract` / `final` → visibility → `static` → `readonly` → `mutating` (as in PER: `final public function`); `extendable` / `abstract` before `class`. The order is part of the grammar: out-of-order or repeated modifiers are a compile error.
 
 | Element | Convention | Example |
 | --- | --- | --- |
@@ -108,7 +108,7 @@ true try unsafe use void while yield
   `void`, `never` and `null` are keywords. Everything else in the stdlib lives in a namespace (`\Math\Rounding`, `\Str\Form`, `\Float\Key`, `\Time\Duration`, …). No prelude name may be declared as a type, function or constant (`prelude-name-redeclared`); in particular `(i8)` is always a cast. This applies to template functions too: `List.scbt` must be renamed (e.g. `UserList.scbt`).
 - `extern` and `unsafe` are reserved for future FFI.
 - `_` is reserved: never an identifier; it is the wildcard in patterns and the discard in destructuring (`[$a, _] = $pair;`). `$_` is an ordinary variable.
-- Reserved words are allowed as names where the position is unambiguous: named-argument labels (`default:`), method and property names after `->`, `?->`, `::`, and class constant and enum case names. Never as function, class or type names.
+- Reserved words are allowed as names where the position is unambiguous: named-argument labels (`default:`), method and property names after `->`, `?->`, `::`, class constant and enum case names, and any segment of a qualified name after a `\` (`\Io\print`). Never as the name in a function, class or type declaration.
 
 Numeric literals:
 
@@ -940,7 +940,7 @@ Match         = "match" [ "(" Expr ")" ] "{" Arm { "," Arm } [ "," ] "}" ;   (* 
 Arm           = ( Pattern { "," Pattern } | "default" ) [ "if" Expr ] "=>" ( Expr | Block ) ;
 Pattern       = [ "-" ] NumLit | Literal | Variable | "_" | ( Variable | "_" ) ":" Type   (* typed binding / type test *)
               | "==" Expr | [ "-" ] IntLit ( "..=" | "..<" ) [ "-" ] IntLit
-              | QualifiedName [ "(" Pattern { "," Pattern } ")" ]      (* enum case *)
+              | ( QualifiedName | "self" ) [ "::" Name ] [ "(" Pattern { "," Pattern } ")" ]   (* constant, enum case, type *)
               | StructPattern
               | ListPattern ;
 ListPattern   = "[" Pattern { "," Pattern } "]" ;

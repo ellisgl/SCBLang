@@ -786,7 +786,7 @@ fn member(p: &mut Parser) -> PResult<Option<Member>> {
             break;
         };
         let span = p.span();
-        // SPEC-OPEN: Q29 — out-of-order modifiers are a compile error.
+        // SPEC "Style and naming" (Q29): out-of-order modifiers are a compile error.
         if last_rank.is_some_and(|r| r >= rank) {
             p.report(
                 Diagnostic::new(

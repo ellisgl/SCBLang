@@ -620,7 +620,7 @@ impl Parser {
 
     /// Calls to PHP language constructs SCB removed (`isset($x)`, `array(…)`, …).
     fn removed_call(&mut self, word: &str) {
-        // SPEC-OPEN: Q27 — these words are reserved only when followed by `(`.
+        // SPEC "Built-in statements" (Q27): these words are reserved only when followed by `(`.
         if !self.at_n(1, Punct::LParen) {
             return;
         }

@@ -234,8 +234,8 @@ impl Parser {
             }
             self.bump();
         }
-        // SPEC-OPEN: Q28 — after a `\` the position is unambiguous, so keywords are
-        // allowed (`\Io\print`).
+        // SPEC "Lexical structure" (Q28): after a `\` the position is unambiguous,
+        // so keywords are allowed (`\Io\print`).
         let mut parts = vec![if absolute {
             self.name("a name")?
         } else {
