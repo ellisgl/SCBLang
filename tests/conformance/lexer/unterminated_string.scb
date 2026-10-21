@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: unterminated-string
+
+namespace Conformance;
+
+function main(): void
+{
+    echo "never closed;
+}

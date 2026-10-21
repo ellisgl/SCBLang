@@ -1,0 +1,7 @@
+// EXPECT-COMPILE-ERROR: bom
+
+namespace Conformance;
+
+function main(): void
+{
+}

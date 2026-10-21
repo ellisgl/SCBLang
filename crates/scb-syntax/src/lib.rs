@@ -1,10 +1,13 @@
-//! SCB syntax: source files, spans and diagnostics.
+//! SCB syntax: source files, spans, diagnostics, tokens and the lexer.
 //!
-//! The lexer (M1) and parser (M2) land here; M0 provides the source map and
-//! the diagnostic type every later stage reports through.
+//! The parser (M2) lands here too.
 
 mod diagnostic;
+mod lexer;
 mod source;
+mod token;
 
 pub use diagnostic::Diagnostic;
+pub use lexer::lex;
 pub use source::{FileId, SourceFile, SourceMap, Span};
+pub use token::{Keyword, Punct, StrLit, StrPart, Token, TokenKind};

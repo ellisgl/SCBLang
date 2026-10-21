@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: invalid-variable
+
+namespace Conformance;
+
+function main(): void
+{
+    $$name = 1;
+}

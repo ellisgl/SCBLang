@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: invalid-separator
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1__000;
+}

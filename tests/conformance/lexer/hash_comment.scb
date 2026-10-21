@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: hash-comment
+
+namespace Conformance;
+
+function main(): void
+{
+    # old-style comment
+}

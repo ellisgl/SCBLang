@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: invalid-character
+
+namespace Conformance;
+
+function main(): void
+{
+    $café: int = 1;
+}

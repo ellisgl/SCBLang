@@ -19,15 +19,25 @@ impl Program {
 
 /// Parses and type-checks a compilation.
 ///
-/// M0: the front end does not exist yet, so every compilation fails with
-/// `not-implemented`. The lexer arrives in M1, the parser in M2, the checker in M3.
+/// M1: every file is lexed and lexical errors are reported. The parser (M2) and the
+/// checker (M3) do not exist yet, so a file that lexes cleanly still fails with
+/// `not-implemented`.
 pub fn check(sources: SourceMap) -> Result<Program, (SourceMap, Vec<Diagnostic>)> {
-    let diagnostic = Diagnostic::new(
-        "not-implemented",
-        "the SCB front end is not implemented yet",
-    )
-    .with_note(format!("{} source file(s) loaded", sources.len()));
-    Err((sources, vec![diagnostic]))
+    let mut diagnostics = Vec::new();
+    let mut tokens = 0;
+    for (id, file) in sources.files() {
+        let (toks, diags) = scb_syntax::lex(id, &file.text);
+        tokens += toks.len();
+        diagnostics.extend(diags);
+    }
+    if diagnostics.is_empty() {
+        diagnostics.push(
+            Diagnostic::new("not-implemented", "the SCB parser is not implemented yet").with_note(
+                format!("{} file(s) lexed, {tokens} token(s)", sources.len()),
+            ),
+        );
+    }
+    Err((sources, diagnostics))
 }
 
 #[cfg(test)]

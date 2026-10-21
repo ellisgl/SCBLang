@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: invalid-escape
+
+namespace Conformance;
+
+function main(): void
+{
+    $s: string = "\u{D800}";
+}

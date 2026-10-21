@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: legacy-octal
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 0377;
+}

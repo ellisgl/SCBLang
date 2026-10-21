@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: invalid-heredoc
+
+namespace Conformance;
+
+function main(): void
+{
+    $s: string = <<<EOT
+  too far left
+    EOT;
+}

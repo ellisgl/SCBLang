@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: invalid-interpolation
+// SPEC-OPEN: Q25
+
+namespace Conformance;
+
+function main(): void
+{
+    $name: string = "x";
+    echo "${name}\n";
+}

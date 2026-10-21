@@ -1,0 +1,131 @@
+//! Tokens produced by the lexer.
+
+use crate::Span;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenKind {
+    /// Identifier, including contextual keywords (`in`, `out`, `of`, `get`, `set`, `type`, `where`)
+    /// and built-in type names (`int`, `list`, …), which are prelude names, not keywords.
+    Ident(Box<str>),
+    Keyword(Keyword),
+    /// `$name`, stored without the `$`.
+    Variable(Box<str>),
+    /// `_`: the wildcard / discard.
+    Underscore,
+    /// Integer literal value (any radix). The type checker assigns the width.
+    Int(u64),
+    /// Float literal with separators removed (e.g. `1.5e-3`), parsed later per target type.
+    Float(Box<str>),
+    /// `'…'`, `"…"`, heredoc or nowdoc.
+    Str(StrLit),
+    /// `b"…"`.
+    Bytes(Vec<u8>),
+    /// `/** … */`, text between the delimiters.
+    DocComment(Box<str>),
+    /// `#[`
+    AttrOpen,
+    Punct(Punct),
+    Eof,
+}
+
+/// A string literal: text interleaved with interpolations.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StrLit {
+    pub parts: Vec<StrPart>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StrPart {
+    Text(String),
+    /// Simple interpolation `$name`.
+    Var {
+        name: Box<str>,
+        span: Span,
+    },
+    /// `{$expr}`: the tokens of the expression (starting at `$`, without the braces),
+    /// terminated by an `Eof` token at the closing brace.
+    Expr {
+        tokens: Vec<Token>,
+        span: Span,
+    },
+}
+
+macro_rules! keywords {
+    ($($variant:ident = $text:literal,)*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum Keyword { $($variant,)* }
+
+        impl Keyword {
+            pub fn from_ident(s: &str) -> Option<Keyword> {
+                match s { $($text => Some(Keyword::$variant),)* _ => None }
+            }
+
+            pub fn as_str(self) -> &'static str {
+                match self { $(Keyword::$variant => $text,)* }
+            }
+        }
+    };
+}
+
+// SPEC "Lexical structure → Reserved keywords".
+keywords! {
+    Abstract = "abstract", As = "as", Break = "break", Case = "case", Catch = "catch",
+    Class = "class", Clone = "clone", Const = "const", Continue = "continue",
+    Default = "default", Die = "die", Do = "do", Echo = "echo", Else = "else",
+    Elseif = "elseif", Enum = "enum", Exit = "exit", Extendable = "extendable",
+    Extends = "extends", Extern = "extern", False = "false", Final = "final",
+    Finally = "finally", Fn = "fn", For = "for", Foreach = "foreach",
+    Function = "function", If = "if", Implements = "implements", Inout = "inout",
+    Instanceof = "instanceof", Interface = "interface", Internal = "internal", Is = "is",
+    Match = "match", Mutating = "mutating", Namespace = "namespace", Never = "never",
+    New = "new", Null = "null", Parent = "parent", Print = "print", Private = "private",
+    Protected = "protected", Public = "public", Readonly = "readonly", Return = "return",
+    SelfKw = "self", Static = "static", Struct = "struct", Throw = "throw", True = "true",
+    Try = "try", Unsafe = "unsafe", Use = "use", Void = "void", While = "while",
+    Yield = "yield",
+}
+
+macro_rules! puncts {
+    ($($variant:ident = $text:literal,)*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum Punct { $($variant,)* }
+
+        impl Punct {
+            pub fn as_str(self) -> &'static str {
+                match self { $(Punct::$variant => $text,)* }
+            }
+
+            /// All punctuators, longest first, for maximal-munch lexing.
+            pub(crate) fn longest_first() -> Vec<Punct> {
+                let mut all = vec![$(Punct::$variant,)*];
+                all.sort_by_key(|p| std::cmp::Reverse(p.as_str().len()));
+                all
+            }
+        }
+    };
+}
+
+puncts! {
+    LParen = "(", RParen = ")", LBrace = "{", RBrace = "}", LBracket = "[", RBracket = "]",
+    Comma = ",", Semi = ";", Colon = ":", ColonColon = "::", Backslash = "\\",
+    Question = "?", QuestionQuestion = "??", QuestionQuestionEq = "??=", QuestionArrow = "?->",
+    Arrow = "->", FatArrow = "=>",
+    Eq = "=", EqEq = "==", NotEq = "!=", Bang = "!",
+    // Removed operators, lexed so the parser can give a targeted diagnostic.
+    StrictEq = "===", StrictNotEq = "!==",
+    Lt = "<", Le = "<=", Spaceship = "<=>", Shl = "<<", ShlEq = "<<=",
+    Gt = ">", Ge = ">=", Shr = ">>", ShrEq = ">>=",
+    Plus = "+", PlusEq = "+=", PlusPlus = "++", Minus = "-", MinusEq = "-=", MinusMinus = "--",
+    Star = "*", StarEq = "*=", StarStar = "**", StarStarEq = "**=",
+    Slash = "/", SlashEq = "/=", TildeSlash = "~/", TildeSlashEq = "~/=", Tilde = "~",
+    Percent = "%", PercentEq = "%=",
+    Dot = ".", DotEq = ".=", Ellipsis = "...", DotDotEq = "..=", DotDotLt = "..<",
+    Amp = "&", AmpEq = "&=", AmpAmp = "&&", Pipe = "|", PipeEq = "|=", PipePipe = "||",
+    PipeGt = "|>", Caret = "^", CaretEq = "^=",
+}

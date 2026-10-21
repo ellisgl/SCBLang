@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: bare-range-operator
+
+namespace Conformance;
+
+function main(): void
+{
+    foreach (1..5 as $i) {
+    }
+}

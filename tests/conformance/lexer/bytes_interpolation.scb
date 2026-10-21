@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: bytes-interpolation
+// SPEC-OPEN: Q22
+
+namespace Conformance;
+
+function main(): void
+{
+    $x: string = "x";
+    $b: bytes = b"$x";
+}

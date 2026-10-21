@@ -34,6 +34,21 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `not-implemented` | A compiler stage that does not exist yet. Never satisfies a conformance test | — (POC scaffolding) |
 | `invalid-utf8` | Source file is not valid UTF-8 | Lexical structure |
 | `missing-main` | Directory mode without `main.scb` | Source files and program entry |
+| `bom` | Byte order mark at the start of a file | Lexical structure |
+| `invalid-character` | Character that cannot start a token (e.g. non-ASCII outside strings and comments, `@`) | Lexical structure |
+| `hash-comment` | `#` comment (only `#[` is valid) | Lexical structure |
+| `unterminated-comment` | `/*` or `/**` never closed | Lexical structure |
+| `unterminated-string` | String literal or `{$…}` interpolation never closed | String literals |
+| `unknown-escape` | Escape not in the table (`"\q"`), or `\0` followed by a digit (octal) | String literals |
+| `invalid-escape` | Malformed `\x`/`\u{…}`, a non-scalar codepoint, or `\x80`–`\xFF` outside `b"…"` | String literals |
+| `legacy-octal` | Integer literal with a leading `0` (`0377`) | Numeric literals |
+| `invalid-separator` | `_` not between two digits | Numeric literals |
+| `invalid-number` | `.5`, `1.`, literal suffixes, bad digits for the radix, leading zeros in floats | Numeric literals |
+| `bare-range-operator` | `..` without `=` or `<` | Ranges |
+| `invalid-variable` | `$` without a name, including variable variables (`$$x`, `${x}`) | Lexical structure; Removed from PHP |
+| `invalid-interpolation` | `"${name}"` | Strings → Interpolation |
+| `bytes-interpolation` | `$name` or `{$…}` inside `b"…"` | String literals |
+| `invalid-heredoc` | Missing closing marker, under-indented body line, mixed tab/space indentation | String literals |
 | `ambiguous-interpolation` | `"$a->b"`, `"$a?->b"` or `"$a[0]"` in a string | Strings → Interpolation |
 | `assign-to-capture` | Assignment to a variable captured by a closure | Closures and captured state |
 | `bare-binding-pattern` | Top-level `$var` pattern without a guard | Enums and match |
@@ -42,7 +57,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `cannot-infer` | Collection literal with no declared type, e.g. `[]` | Collections and values |
 | `control-leaves-finally` | `return` / `break` / `continue` directly in a `finally` body | Errors |
 | `exclusivity-violation` | Overlapping modifying access to a local | Exclusivity |
-| `literal-out-of-range` | Numeric literal does not fit its type | Numerics |
+| `literal-out-of-range` | Numeric literal does not fit its type (the lexer reports values beyond 64 bits) | Numerics |
 | `missing-case-arguments` | Data-carrying enum case used without arguments | Enums and match |
 | `missing-parent-constructor-call` | Subclass constructor does not call `parent::__construct()` exactly once | Structs, classes and interfaces |
 | `missing-return-type` | Function, method or closure without a return type | Grammar sketch → Notes |

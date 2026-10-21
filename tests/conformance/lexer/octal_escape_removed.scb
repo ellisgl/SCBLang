@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: unknown-escape
+// SPEC-OPEN: Q24
+
+namespace Conformance;
+
+function main(): void
+{
+    $s: string = "\012";
+}

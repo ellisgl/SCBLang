@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: unknown-escape
+
+namespace Conformance;
+
+function main(): void
+{
+    $s: string = "\q";
+}
