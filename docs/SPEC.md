@@ -33,8 +33,9 @@ function main($args: list<string>): int
 - A `void` return exits 0. A returned `int` outside 0–255 raises a `ValueError` on POSIX (reported like any uncaught throwable, exit 1).
 - An uncaught throwable prints a stack trace to stderr and exits 1.
 - Stdout is buffered (size implementation-defined). The buffer is flushed when full, before a read from stdin, on normal return from `main`, on `exit`, on an uncaught throwable before the trace is printed, and on a fatal error (e.g. a throwing `__destruct`) before its message: output already echoed is never lost. Stderr is unbuffered. `Process\abort()` does not flush.
-- `Process\exit($code: int): never` unwinds, running `finally` blocks and destructors. It is not a throwable: no `catch` clause, including `catch (Throwable)`, intercepts it. `Process\abort()` terminates immediately.
-- If `exit` is reached while a `finally` block runs because of an earlier throwable or `exit`, the newest `exit` wins. What it replaces is reported on stderr, never dropped silently: a discarded throwable prints its trace marked "discarded by exit(n) at file:line"; a discarded exit code prints "exit(m) at file:line superseded by exit(n) at file:line".
+- A failed write to stdout (e.g. a closed pipe) throws `IoException`, from `echo` / `print` as from `Io\print()`. Because stdout is buffered, the failure may surface at a later write or flush than the one that produced the output. If the final flush at program end fails, the error is reported on stderr and the exit code is 1.
+- `Process\exit($code: int): never` unwinds, running `finally` blocks and destructors. A `$code` outside 0–255 raises a `ValueError` at the `exit`, as a `main` return does (the code is never truncated or clamped). It is not a throwable: no `catch` clause, including `catch (Throwable)`, intercepts it. `Process\abort()` terminates immediately.
+- If `exit` is reached while a `finally` block runs because of an earlier throwable or `exit`, the newest `exit` wins. What it replaces is reported on stderr, never dropped silently: a discarded throwable prints its trace marked "discarded by exit(n) at file:line"; a discarded exit code prints "exit(m) at file:line superseded by exit(n) at file:line". Likewise a `throw` leaving a `finally` while an `exit` is pending wins, and the replaced exit prints "exit(m) at file:line superseded by throw at file:line".
 
 ### Built-in statements
 
@@ -817,6 +818,7 @@ String edge cases:
 - `split($sep, $limit = -1)`: `$limit` is the maximum number of parts, the last keeping the rest; `-1` means no limit; `0` or below `-1` traps (`ValueError`). An empty `$sep` traps (`ValueError`); use `graphemes()`.
 - `trim()` / `trimStart()` / `trimEnd()` strip Unicode `White_Space`. No character-list argument in the POC.
 - `repeat($n)`: `$n < 0` traps (`ValueError`); `0` gives `''`.
+- `replace($needle, $replacement)`: an empty `$needle` traps (`ValueError`), like an empty `split()` separator.
 - `find($needle, $offset = 0)`: `$offset` past the end traps (`IndexError`), off a character boundary traps (`BoundaryError`); an empty needle matches at `$offset`.
 
 `bytes` (a value type with copy-on-write; not `Stringable`):

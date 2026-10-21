@@ -148,8 +148,7 @@ impl Interp<'_> {
             }
             StmtKind::Print(e) => {
                 let v = self.eval(e)?;
-                // Like `Io\print`: a failed write throws `IoException`.
-                // SPEC-OPEN: Q39
+                // SPEC: a failed write throws `IoException`, as `Io\print` does.
                 if let Err(err) = self.iso.write_stdout(v.as_str().as_bytes()) {
                     return Err(self.error("IoException", err.to_string(), s.span));
                 }
@@ -255,8 +254,7 @@ impl Interp<'_> {
                         }
                     }
                     (Err(Flow::Exit(old)), Flow::Exit(_) | Flow::Throw(_)) => {
-                        // An `exit` replaced by a `throw` is reported the same way.
-                        // SPEC-OPEN: Q40
+                        // SPEC: the newest wins; the replaced exit is reported.
                         let by = self.replaced_by(&new);
                         let _ = self.iso.flush_stdout();
                         let msg = format!("exit({old}) superseded by {by}\n");

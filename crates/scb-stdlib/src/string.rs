@@ -120,8 +120,7 @@ fn find(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
 fn replace(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let needle = string(c, 0);
     let text = s(c);
-    // SPEC-OPEN: Q37 — an empty needle matches between every character; until
-    // decided it traps like an empty `split()` separator.
+    // SPEC: an empty needle traps, like an empty `split()` separator.
     if needle.is_empty() {
         return Err(it.error("ValueError", "`replace()` needs a non-empty needle", c.span));
     }

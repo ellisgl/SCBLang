@@ -149,3 +149,61 @@ function main(): void { Counter::$n++; echo Counter::$n, "\n"; }
     }
     assert_eq!(String::from_utf8_lossy(&out.0.borrow()), "1\n1\n");
 }
+
+/// A stdout whose every write fails, like a closed pipe.
+struct ClosedPipe;
+
+impl Write for ClosedPipe {
+    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+        Err(io::Error::new(io::ErrorKind::BrokenPipe, "closed pipe"))
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Runs a program with a stdout that fails; returns (exit code, stderr).
+fn run_with_closed_stdout(src: &str) -> (i32, String) {
+    let mut sources = SourceMap::new();
+    sources
+        .add(Path::new("main.scb"), src.as_bytes().to_vec())
+        .unwrap();
+    let program = Arc::new(scb_types::check(sources).unwrap_or_else(|_| panic!("compiles")));
+    let err = Shared::default();
+    let io = IsolateIo {
+        stdout: Box::new(ClosedPipe),
+        stderr: Box::new(err.clone()),
+        stdin: Box::new(Cursor::new(Vec::new())),
+        env: Box::new(MapEnv::default()),
+    };
+    let RunOutcome::Exit(code) =
+        Isolate::with_natives(io, scb_stdlib::natives()).run(&program, &[]);
+    let text = String::from_utf8_lossy(&err.0.borrow()).into_owned();
+    (code, text)
+}
+
+/// SPEC "Source files and program entry": a failed final flush is reported on
+/// stderr and the exit code is 1 (a buffered `echo` itself succeeded).
+#[test]
+fn failed_final_flush_exits_1() {
+    let (code, err) =
+        run_with_closed_stdout("namespace T;\nfunction main(): void { echo \"hi\\n\"; }\n");
+    assert_eq!(code, 1);
+    assert!(err.contains("cannot write to stdout"), "{err}");
+}
+
+/// SPEC: a failed write throws `IoException` from `echo`, catchable like any other.
+#[test]
+fn failed_echo_throws_io_exception() {
+    let src = r#"namespace T;
+function main(): void
+{
+    try {
+        echo 'x'->repeat(100000);
+    } catch (\IoException) {
+        \Io\eprint("caught\n");
+    }
+}
+"#;
+    assert_eq!(run_with_closed_stdout(src), (0, "caught\n".into()));
+}

@@ -410,8 +410,7 @@ impl<'a> Interp<'a> {
     }
 
     /// `exit($code)`: a code outside 0–255 raises `ValueError`, as a `main` return
-    /// does (SPEC "Source files and program entry").
-    // SPEC-OPEN: Q38
+    /// does; it is never truncated (SPEC "Source files and program entry").
     pub fn exit_with(&mut self, code: i64, span: Span) -> Flow {
         match u8::try_from(code) {
             Ok(c) => Flow::Exit(i32::from(c)),
@@ -521,8 +520,18 @@ impl<'a> Interp<'a> {
             self.iso.discard_stdout();
             return 134;
         }
-        let _ = self.iso.flush_stdout();
-        match result {
+        // SPEC: a failed final flush is reported and the exit code becomes 1.
+        let flush_failed = match self.iso.flush_stdout() {
+            Ok(()) => false,
+            Err(e) => {
+                let msg = format!("Fatal error: cannot write to stdout: {e}\n");
+                let _ = self.iso.write_stderr(msg.as_bytes());
+                // Nothing more can be written; do not retry at the end of `run`.
+                self.iso.discard_stdout();
+                true
+            }
+        };
+        let code = match result {
             Ok(Value::I64(code)) => code as i32,
             Ok(_) => 0,
             Err(Flow::Exit(code)) => code,
@@ -538,7 +547,8 @@ impl<'a> Interp<'a> {
                 1
             }
             Err(Flow::Return(_) | Flow::Break(_) | Flow::Continue(_) | Flow::Abort) => 0,
-        }
+        };
+        if flush_failed { 1 } else { code }
     }
 
     /// `Uncaught Class: message`, the position, the trace and the `previous` chain.
