@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: syntax-error
+
+namespace Conformance;
+
+function twice(int $x): int
+{
+    return $x * 2;
+}
+
+function main(): void
+{
+}

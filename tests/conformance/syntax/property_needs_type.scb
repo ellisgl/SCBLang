@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: missing-type
+
+namespace Conformance;
+
+class Counter
+{
+    public $count = 0;
+}
+
+function main(): void
+{
+}

@@ -1,0 +1,58 @@
+namespace Golden;
+
+function expressions(): void
+{
+    $a = 1 + 2 * 3 - 4 ~/ 5 % 6;
+    $b = -2 ** 2 ** -1;
+    $c = $x << 2 >> 1 & 0xFF | 0b1010 ^ ~$y;
+    $d = 'n: ' . $n + 1 . "!";
+    $e = $p && !$q || $r ?? $s;
+    $f = $x < $y == $y >= $z;
+    $g = $a <=> $b;
+    $h = $obj is $other;
+    $i = 0..<count($xs);
+    $j = (1..=12)->contains($month);
+    $k = $cond ? 'yes' : ($other ? 'maybe' : 'no');
+    $l = (string) $n . (i8) $m . (f32) 1.5;
+    $m = $x instanceof Foo && $y instanceof list<int>;
+    $n = $user?->address?->city ?? 'unknown';
+    $o = $list[0]->qty + $map['k'] + $t[1];
+    $list[] = 4;
+    $order->lines[2]->qty += 1;
+    Counter::$hits *= 2;
+    $p = Status::ACTIVE->value . Suit::class . self::LIMIT;
+    $q = new \App\Thing(1, name: 'a', ...$rest);
+    $r = clone $thing;
+    $s = clone($user, name: 'Ken', age: 3);
+    $t = fn($x: int): int => $x * $factor;
+    $u = fn(): void {
+        echo 'hi';
+    };
+    $v = \Str\normalize(...);
+    $w = $obj->method(...);
+    $x = Shape::CIRCLE(1.5);
+    $y = Shape::RECT(w: 2.0, h: 3.0);
+    $z = \Env\get('PORT') ?? exit(2);
+    $aa = $maybe ?? throw new ValueError('missing');
+    $bb = ['a' => [1, 2], 'b' => []];
+    $cc = "sum: {$a + $b}, item: {$items[0]->name}, raw $name.";
+    $dd = <<<TXT
+        Hello $name
+          indented {$x}
+        TXT;
+    $ee = <<<'RAW'
+        no $interp here
+        RAW;
+    $ff = b"\x00\xFF";
+    $gg = parent(Named)::describe();
+    $hh = __LINE__ . __FILE__;
+    $ii = f(inout $p->x, inout $list[$i], inout Foo::$count);
+    $jj = match ($n) {
+        90..=100 => 'A',
+        -10..<0 => 'negative',
+        == $limit, == maxFor($u) => 'limit',
+        $v: int if $v > 5 => 'big',
+        _: string => 'text',
+        default => 'other',
+    };
+}

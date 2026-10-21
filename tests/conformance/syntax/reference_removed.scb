@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function bump(&$n: int): void
+{
+    $n++;
+}
+
+function main(): void
+{
+}

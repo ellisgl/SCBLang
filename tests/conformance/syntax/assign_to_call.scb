@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: invalid-assignment-target
+
+namespace Conformance;
+
+function value(): int
+{
+    return 1;
+}
+
+function main(): void
+{
+    value() = 2;
+}

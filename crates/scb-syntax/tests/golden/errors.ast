@@ -1,0 +1,33 @@
+(file
+  (namespace Golden)
+  (function errors
+    (params)
+    (returns void)
+    (block
+      (= $a (== $b $c))
+      (if $x (block (echo "braceless")))
+      (= $s <error>)
+      (= $n <error>)
+      (= $m (match (subject $x) (arm (bind $limit) (=> 1)) (arm default (=> 2))))
+      (local $after int 1)
+      (= $z <error>)))
+  (class Widget
+    (property $legacy public int (= 0))
+    (method noVisibility public (params) (returns void) (block))
+    (property $untyped public <error> (= 1))
+    (method noReturn public (params) (returns void) (block)))
+  (class Sealed))
+; 5:13 error[removed-syntax]: `===` is removed
+; 6:13 error[removed-syntax]: the body of `if` needs braces
+; 7:10 error[removed-syntax]: `function (…) use (…)` closures are removed
+; 8:16 error[short-ternary]: the short ternary `?:` is removed (it tests truthiness)
+; 9:10 error[bool-cast]: `(bool)` casts are banned
+; 10:23 error[bare-binding-pattern]: `$limit` as a pattern matches anything and binds it
+; 11:15 error[syntax-error]: expected an expression, found `;`
+; 13:14 error[not-supported-in-poc]: not supported in the POC: the pipe operator `|>`
+; 18:5 error[removed-syntax]: `var` is removed: properties declare a visibility
+; 19:5 error[missing-visibility]: method `noVisibility` needs an explicit visibility
+; 20:21 error[missing-type]: property `$untyped` needs a type
+; 21:32 error[missing-return-type]: method `noReturn` needs a return type
+; 24:1 error[not-supported-in-poc]: not supported in the POC: type aliases
+; 26:1 error[redundant-final]: `final` is not a class modifier: classes are final by default

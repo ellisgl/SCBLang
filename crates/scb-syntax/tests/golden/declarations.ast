@@ -1,0 +1,82 @@
+(file
+  (namespace App\Models)
+  (use Io\Writer)
+  (use App\Shapes\Circle)
+  (use App\Shapes\Square (as Sq))
+  (use-function Str\normalize)
+  (use-const Math\PI)
+  (const MAX_USERS int 100)
+  (interface Named
+    (method name public (params) (returns string) no-body)
+    (method greet public
+      (params)
+      (returns string)
+      (block (return (interp "hello " (call (-> $this name)))))))
+  (interface Labeled (extends Named \Stringable))
+  (class Animal abstract
+    (implements Named)
+    (property $count protected static int (= 0))
+    (method __construct public
+      (params (param $name protected readonly string))
+      (block (post++ (:: self $count))))
+    (method sound abstract public (params) (returns string) no-body)
+    (method name final public
+      (params)
+      (returns string)
+      (block (return (-> $this name)))))
+  (class Dog extendable
+    (extends Animal)
+    (const LEGS public int 4)
+    (property $tricks private (generic list string) (= (list)))
+    (method __construct public
+      (params (param $name string) (param $age public u8 (= 1)))
+      (block (call (:: parent __construct) $name)))
+    (method sound public (params) (returns string) (block (return "woof")))
+    (method __destruct public (params) (block)))
+  (class Config readonly
+    (method __construct public
+      (params (param $host public string) (param $port public u16 (= 8080)))
+      (block)))
+  (struct Point
+    (implements Equatable)
+    (method __construct public
+      (params (param $x public f64) (param $y public f64))
+      (block))
+    (method shift public mutating
+      (params (param $dx f64) (param $dy f64 (= 0.0f)))
+      (returns void)
+      (block (+= (-> $this x) $dx) (+= (-> $this y) $dy)))
+    (method origin public static
+      (params)
+      (returns self)
+      (block (return (new Point (x: 0.0f) (y: 0.0f))))))
+  (enum Suit
+    (case HEARTS)
+    (case SPADES)
+    (const DEFAULT public Suit (:: Suit HEARTS))
+    (method color public
+      (params)
+      (returns string)
+      (block
+        (return
+          (match
+            (subject $this)
+            (arm (path self ::HEARTS) (=> "red"))
+            (arm (path self ::SPADES) (=> "black")))))))
+  (enum Status (backed int) (implements HasLabel) (case ACTIVE 1) (case BANNED (- 1)))
+  (enum Json
+    (case NULL)
+    (case NUMBER (params (param $n f64)))
+    (case LIST (params (param $items (generic list Json))))
+    (case OBJECT (params (param $fields (generic map string Json)))))
+  (function apply
+    (params
+      (param $xs inout (generic list int))
+      (param $f (fn (params int) int))
+      (param $extra variadic int))
+    (returns void)
+    (block))
+  (function main
+    (params (param $args (generic list string)))
+    (returns int)
+    (block (return 0))))

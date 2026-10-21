@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: top-level-statement
+
+namespace Conformance;
+
+echo "hello";
+
+function main(): void
+{
+}

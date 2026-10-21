@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: map<string, int> = ["a" => 1];
+    if (isset($m["a"])) {
+        echo "set";
+    }
+}

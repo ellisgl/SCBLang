@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: redundant-final
+
+namespace Conformance;
+
+final class Plain
+{
+}
+
+function main(): void
+{
+}

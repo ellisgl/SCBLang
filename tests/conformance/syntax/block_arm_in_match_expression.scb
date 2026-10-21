@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: syntax-error
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    $s: string = match ($n) {
+        1 => {
+            return;
+        },
+        default => "other",
+    };
+}

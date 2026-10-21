@@ -1,0 +1,265 @@
+=== example 0: function main(): void
+skipped: list of allowed signatures
+
+=== example 1: i32::wrappingAdd($a, $b)    // wraps
+mode: expressions
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (call (:: i32 wrappingAdd) $a $b)
+      (call (:: i32 saturatingAdd) $a $b)
+      (call (:: i32 checkedAdd) $a $b))))
+
+=== example 2: function addItem(inout $items: list<int>, $v: int): void
+mode: declarations and statements
+(file
+  (namespace Spec)
+  (function example (params) (returns void) (block (call addItem (inout $list) 5)))
+  (function addItem
+    (params (param $items inout (generic list int)) (param $v int))
+    (returns void)
+    (block (call (-> $items push) $v))))
+
+=== example 3: $count: Ref<int> = new Ref(0);
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $count (generic Ref int) (new Ref 0))
+      (call
+        (-> $list each)
+        (fn (params (param $x int)) (returns void) (block (post++ (-> $count value))))))))
+
+=== example 4: public function join($sep: string): string where T of Stringable
+skipped: signature fragment
+
+=== example 5: $scale: fn(int): int = fn($x: int): int => $x * $factor;
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $scale
+        (fn (params int) int)
+        (fn (params (param $x int)) (returns int) (=> (* $x $factor))))
+      (local $fmt
+        (fn (params User) string)
+        (fn
+          (params (param $u User))
+          (returns string)
+          (block (return (interp (-> $u name) " <" (-> $u email) ">"))))))))
+
+=== example 6: $out: string = $input->trim()->replace('a', 'b')   // methods: chain
+mode: statements
+(file
+  (namespace Spec)
+  (function example (params) (returns void) (block (local $out string <error>))))
+; 5:23 error[not-supported-in-poc]: not supported in the POC: partial application (`?` arguments)
+; 5:5 error[not-supported-in-poc]: not supported in the POC: the pipe operator `|>`
+; 6:5 error[not-supported-in-poc]: not supported in the POC: the pipe operator `|>`
+
+=== example 7: struct Point
+mode: declarations
+(file
+  (namespace Spec)
+  (struct Point
+    (method __construct public
+      (params (param $x public f64) (param $y public f64))
+      (block))
+    (method shift public mutating
+      (params (param $dx f64))
+      (returns void)
+      (block (+= (-> $this x) $dx)))))
+
+=== example 8: enum Suit { case HEARTS; case SPADES; }                  // pure
+mode: declarations
+(file
+  (namespace Spec)
+  (enum Suit (case HEARTS) (case SPADES))
+  (enum Status (backed string) (case ACTIVE "active"))
+  (enum Shape
+    (case CIRCLE (params (param $r f64)))
+    (case RECT (params (param $w f64) (param $h f64)))))
+
+=== example 9: $area: f64 = match ($shape) {
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $area f64
+        (match
+          (subject $shape)
+          (arm (path Shape ::CIRCLE (payload (bind $r))) (=> (* (* \Math\PI $r) $r)))
+          (arm
+            (path Shape ::RECT (payload (bind $w) (bind $h)))
+            (if (== $w $h))
+            (=> (* $w $w)))
+          (arm (path Shape ::RECT (payload (bind $w) (bind $h))) (=> (* $w $h))))))))
+
+=== example 10: $label: string = match ($opt) {      // ?int
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $label string
+        (match
+          (subject $opt)
+          (arm (lit null) (=> "none"))
+          (arm (typed $v int) (=> (interp "value " $v)))))
+      (local $size int
+        (match
+          (subject $x)
+          (arm (typed $n int) (=> $n))
+          (arm (typed $s string) (=> (call (-> $s byteLength)))))))))
+
+=== example 11: match ($x) {
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (match-stmt
+        (subject $x)
+        (arm (lit 0) (=> "zero"))
+        (arm (== $limit) (=> "at limit"))
+        (arm (== (call maxFor $u)) (=> "at max"))
+        (arm (bind $n) (if (> $n 100)) (=> "big"))
+        (arm default (=> "other"))))))
+
+=== example 12: $group: string = match {
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $group string
+        (match
+          (arm (when (< $age 13)) (=> "child"))
+          (arm (when (< $age 20)) (=> "teen"))
+          (arm default (=> "adult")))))))
+
+=== example 13: foreach (0..<10 as $i) { … }
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (foreach (..< 0 10) (bind $i) (block))
+      (local $mid (generic list int) (call (-> $list slice) (..< 1 3)))
+      (if (call (-> (paren (..= 1 12)) contains) $month) (block)))))
+
+=== example 14: Point { x: $x, y: $y } = $p;
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (destructure (struct-pattern Point (x: (bind $x)) (y: (bind $y))) $p)
+      (foreach $points (struct-pattern Point (x: (bind $x))) (block))
+      (destructure (list-pattern (bind $a) (list-pattern (bind $b) (bind $c))) $nested))))
+
+=== example 15: if ($v instanceof \Json\Value::STRING($s)) {
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (if
+        (instanceof $v (path \Json\Value ::STRING (payload (bind $s))))
+        (block (echo $s))))))
+
+=== example 16: $users: list<User> = \Task\scope(fn($s: \Task\Scope): list<User> {
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $users
+        (generic list User)
+        (call \Task\scope
+          (fn
+            (params (param $s \Task\Scope))
+            (returns (generic list User))
+            (block
+              (local $a
+                (generic \Task\Handle User)
+                (call
+                  (-> $s spawn)
+                  (fn (params) (returns User) (=> (call (-> $repo find) 1)))))
+              (local $b
+                (generic \Task\Handle User)
+                (call
+                  (-> $s spawn)
+                  (fn (params) (returns User) (=> (call (-> $repo find) 2)))))
+              (return (list (call (-> $a await)) (call (-> $b await)))))))))))
+
+=== example 17: $action: Action = \Task\select(
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $action Action
+        (call \Task\select
+          (call
+            (-> $jobs onReceive)
+            (fn (params (param $job (? Job))) (returns Action) (=> (call handle $job))))
+          (call
+            (-> $quit onReceive)
+            (fn (params (param $_ (? bool))) (returns Action) (=> (:: Action STOP))))
+          (call
+            (-> $out onSend)
+            $r
+            (fn (params) (returns Action) (=> (:: Action SENT))))
+          (call \Task\onTimeout
+            (call (:: \Time\Duration seconds) 1)
+            (fn (params) (returns Action) (=> (:: Action TIMEOUT)))))))))
+
+=== example 18: $h: \Thread\Handle<Summary> = \Thread\spawn(fn($jobs: \Task\Channel<Job>): Summary { … });
+mode: statements
+(file
+  (namespace Spec)
+  (function example
+    (params)
+    (returns void)
+    (block
+      (local $h
+        (generic \Thread\Handle Summary)
+        (call \Thread\spawn
+          (fn
+            (params (param $jobs (generic \Task\Channel Job)))
+            (returns Summary)
+            (block))))
+      (local $summary Summary (call (-> $h join)))
+      (local $hash string
+        (call \Thread\run (fn (params) (returns string) (=> (call \Crypto\argon2 $pw)))))
+      (local $pool \Thread\Pool (new \Thread\Pool (workers: 8))))))
+

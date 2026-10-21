@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function show($x: mixed): void
+{
+}
+
+function main(): void
+{
+}

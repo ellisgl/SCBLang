@@ -1,0 +1,42 @@
+(file
+  (namespace Golden)
+  (function statements
+    (params)
+    (returns void)
+    (block
+      (local $count int 0)
+      (readonly-local $name string "x")
+      (const LIMIT i32 10)
+      (local $maybe (? string) null)
+      (destructure (list-pattern (bind $first) (list-pattern (bind $second) _)) $nested)
+      (destructure (struct-pattern Point (x: (bind $px)) (y: _)) $origin)
+      (if
+        (> $count 0)
+        (block (echo $count))
+        (elseif (< $count 0) (block (echo "neg" "\n")))
+        (else (block (print "zero"))))
+      (while (!= (paren (= $line (call \Io\readLine))) null) (block (post++ $count)))
+      (do-while (block (post-- $count)) (> $count 0))
+      (for (local $i int 0) (< $i 10) (exprs (+= $i 2)) (block (continue)))
+      (for (exprs (= $i 0) (= $j 1)) _ (exprs (post++ $i) (post++ $j)) (block (break)))
+      (foreach $items (bind $item) (block))
+      (foreach $map (key $key) (bind $value) (block (break 1)))
+      (foreach $pairs (list-pattern (bind $k) (bind $v)) (block))
+      (foreach $points (struct-pattern Point (x: (bind $x))) (block))
+      (try
+        (block (call risky))
+        (catch $e
+          (types \IoException ParseException)
+          (block (throw (new Error "wrapped" (previous: $e)))))
+        (catch (types Exception) (block))
+        (finally (block (call cleanup))))
+      (match-stmt
+        (subject $count)
+        (arm (lit 0) (=> (block (echo "none"))))
+        (arm (lit 1) (lit 2) (=> (call echo_twice)))
+        (arm default (=> (block))))
+      (match-stmt
+        (arm (when (> $count 10)) (=> (call big)))
+        (arm default (=> (call small))))
+      (block (local $inner bool true))
+      (exit-stmt))))

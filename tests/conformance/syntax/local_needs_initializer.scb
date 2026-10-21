@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: syntax-error
+
+namespace Conformance;
+
+function main(): void
+{
+    $count: int;
+}

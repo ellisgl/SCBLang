@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: missing-visibility
+
+namespace Conformance;
+
+class Counter
+{
+    function count(): int
+    {
+        return 0;
+    }
+}
+
+function main(): void
+{
+}

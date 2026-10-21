@@ -50,6 +50,14 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `bytes-interpolation` | `$name` or `{$…}` inside `b"…"` | String literals |
 | `invalid-heredoc` | Missing closing marker, under-indented body line, mixed tab/space indentation | String literals |
 | `ambiguous-interpolation` | `"$a->b"`, `"$a?->b"` or `"$a[0]"` in a string | Strings → Interpolation |
+| `syntax-error` | Input that does not match the grammar; the message names what was expected. Also: chained non-associative operators (`$a < $b < $c`), unparenthesized nested ternaries, a local declaration without an initializer, block arms in a `match` expression, PHP's prefix types (`int $x`), modifiers out of order (Q29) | Grammar sketch |
+| `removed-syntax` | PHP syntax SCB removed, with a targeted fix-it: `<?php`, `declare`, `===` / `!==`, `and` / `or` / `xor`, `switch`, `&` references, `function () use`, `static fn`, `isset` / `empty` / `unset` / `array()` / `list()` / `eval` / `compact` / `extract` (Q27), alternative syntax, braceless bodies, `else if`, `global`, `static` locals, `goto`, `var`, traits, `new $class`, `->$name`, `instanceof $var`, PHP-only casts, the `mixed` / `callable` / `iterable` / `object` / `array` types | Removed from PHP |
+| `missing-namespace` | File without a leading `namespace` declaration | Modules and packages |
+| `top-level-statement` | Statement outside a function (files contain declarations only) | Source files and program entry |
+| `missing-type` | Parameter, property or constant without a type | Type system |
+| `missing-visibility` | Property, method or class constant without a visibility | Structs, classes and interfaces |
+| `invalid-assignment-target` | Assignment to something that is not a variable, property, element or static property | Nested mutation |
+| `match-true` | `match (true)` with condition arms (use the subjectless `match`) | Enums and match |
 | `assign-to-capture` | Assignment to a variable captured by a closure | Closures and captured state |
 | `bare-binding-pattern` | Top-level `$var` pattern without a guard | Enums and match |
 | `bitwise-on-bool` | `&`, `\|`, `^` on `bool` | Numerics |
@@ -60,7 +68,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `literal-out-of-range` | Numeric literal does not fit its type (the lexer reports values beyond 64 bits) | Numerics |
 | `missing-case-arguments` | Data-carrying enum case used without arguments | Enums and match |
 | `missing-parent-constructor-call` | Subclass constructor does not call `parent::__construct()` exactly once | Structs, classes and interfaces |
-| `missing-return-type` | Function, method or closure without a return type | Grammar sketch → Notes |
+| `missing-return-type` | Function, method, closure or function type without a return type | Grammar sketch → Notes |
 | `mutating-temporary` | Write or `inout` through a value-typed temporary | Nested mutation |
 | `namespace-mismatch` | Directory mode with differing namespaces | Modules and packages |
 | `non-bool-condition` | Condition (`if`, `while`, ternary, …) not of type `bool` | Type system |
@@ -69,7 +77,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `override-final` | Overriding a `final` method | Structs, classes and interfaces |
 | `prelude-name-redeclared` | Type, function or constant named after a prelude name | Lexical structure |
 | `redeclared-variable` | Declaring or binding a name that is still visible | Type system |
-| `redundant-final` | `final` where it is meaningless | Structs, classes and interfaces |
+| `redundant-final` | `final` where it is meaningless (on a class, or on a method that cannot be overridden) | Structs, classes and interfaces |
 | `reserved-namespace` | User file declaring a stdlib root namespace | Modules and packages |
 | `short-ternary` | `?:` | Grammar sketch → Notes |
 | `string-subscript` | `$s[0]` on a `string` | Strings |

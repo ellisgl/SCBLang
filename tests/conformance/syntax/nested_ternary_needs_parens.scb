@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: syntax-error
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    $s: string = $n == 0 ? "zero" : $n == 1 ? "one" : "many";
+}

@@ -1,0 +1,76 @@
+namespace Golden;
+
+function statements(): void
+{
+    $count: int = 0;
+    readonly $name: string = 'x';
+    const LIMIT: i32 = 10;
+    $maybe: ?string = null;
+    [$first, [$second, _]] = $nested;
+    Point { x: $px, y: _ } = $origin;
+
+    if ($count > 0) {
+        echo $count;
+    } elseif ($count < 0) {
+        echo 'neg', "\n";
+    } else {
+        print 'zero';
+    }
+
+    while (($line = \Io\readLine()) != null) {
+        $count++;
+    }
+
+    do {
+        $count--;
+    } while ($count > 0);
+
+    for ($i: int = 0; $i < 10; $i += 2) {
+        continue;
+    }
+
+    for ($i = 0, $j = 1; ; $i++, $j++) {
+        break;
+    }
+
+    foreach ($items as $item) {
+    }
+
+    foreach ($map as $key => $value) {
+        break 1;
+    }
+
+    foreach ($pairs as [$k, $v]) {
+    }
+
+    foreach ($points as Point { x: $x }) {
+    }
+
+    try {
+        risky();
+    } catch ($e: \IoException | ParseException) {
+        throw new Error('wrapped', previous: $e);
+    } catch (Exception) {
+    } finally {
+        cleanup();
+    }
+
+    match ($count) {
+        0 => {
+            echo 'none';
+        }
+        1, 2 => echo_twice(),
+        default => {}
+    }
+
+    match {
+        $count > 10 => big(),
+        default => small(),
+    };
+
+    {
+        $inner: bool = true;
+    }
+
+    exit;
+}

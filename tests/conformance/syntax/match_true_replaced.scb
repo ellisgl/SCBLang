@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: match-true
+
+namespace Conformance;
+
+function main(): void
+{
+    $age: int = 30;
+    $group: string = match (true) {
+        $age < 13 => "child",
+        default => "adult",
+    };
+}

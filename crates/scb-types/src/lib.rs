@@ -19,22 +19,27 @@ impl Program {
 
 /// Parses and type-checks a compilation.
 ///
-/// M1: every file is lexed and lexical errors are reported. The parser (M2) and the
-/// checker (M3) do not exist yet, so a file that lexes cleanly still fails with
+/// M2: every file is lexed and parsed, and lexical and syntax errors are reported. The
+/// checker (M3) does not exist yet, so a file that parses cleanly still fails with
 /// `not-implemented`.
 pub fn check(sources: SourceMap) -> Result<Program, (SourceMap, Vec<Diagnostic>)> {
     let mut diagnostics = Vec::new();
-    let mut tokens = 0;
+    let mut decls = 0;
     for (id, file) in sources.files() {
-        let (toks, diags) = scb_syntax::lex(id, &file.text);
-        tokens += toks.len();
+        let (ast, diags) = scb_syntax::parse_source(id, &file.text);
+        decls += ast.map_or(0, |a| a.decls.len());
         diagnostics.extend(diags);
     }
     if diagnostics.is_empty() {
         diagnostics.push(
-            Diagnostic::new("not-implemented", "the SCB parser is not implemented yet").with_note(
-                format!("{} file(s) lexed, {tokens} token(s)", sources.len()),
-            ),
+            Diagnostic::new(
+                "not-implemented",
+                "the SCB type checker is not implemented yet",
+            )
+            .with_note(format!(
+                "{} file(s) parsed, {decls} declaration(s)",
+                sources.len()
+            )),
         );
     }
     Err((sources, diagnostics))

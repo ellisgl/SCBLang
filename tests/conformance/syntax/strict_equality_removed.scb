@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: int = 1;
+    $same: bool = $a === 1;
+}

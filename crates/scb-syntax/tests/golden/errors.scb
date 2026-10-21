@@ -1,0 +1,28 @@
+namespace Golden;
+
+function errors(): void
+{
+    $a = $b === $c;
+    if ($x) echo 'braceless';
+    $f = function ($x) use ($y) { return $x; };
+    $s = $name ?: 'anon';
+    $n = (bool) $count;
+    $m = match ($x) { $limit => 1, default => 2 };
+    $broken = ;
+    $after: int = 1;
+    $z = 'a' |> twice(...);
+}
+
+class Widget
+{
+    var $legacy: int = 0;
+    function noVisibility(): void {}
+    public $untyped = 1;
+    public function noReturn() {}
+}
+
+type Alias = int;
+
+final class Sealed
+{
+}

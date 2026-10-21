@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: syntax-error
+
+namespace Conformance;
+
+function main(): void
+{
+    $a: int = 1;
+    $ok: bool = 0 < $a < 10;
+}

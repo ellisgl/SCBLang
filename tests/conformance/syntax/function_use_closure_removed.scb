@@ -1,0 +1,11 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function main(): void
+{
+    $factor: int = 2;
+    $f: fn(int): int = function ($x: int): int use ($factor) {
+        return $x * $factor;
+    };
+}

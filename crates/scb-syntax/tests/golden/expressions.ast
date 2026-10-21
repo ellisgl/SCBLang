@@ -1,0 +1,61 @@
+(file
+  (namespace Golden)
+  (function expressions
+    (params)
+    (returns void)
+    (block
+      (= $a (- (+ 1 (* 2 3)) (% (~/ 4 5) 6)))
+      (= $b (- (** 2 (** 2 (- 1)))))
+      (= $c (| (& (>> (<< $x 2) 1) 255) (^ 10 (~ $y))))
+      (= $d (. (. "n: " (+ $n 1)) "!"))
+      (= $e (?? (|| (&& $p (! $q)) $r) $s))
+      (= $f (== (< $x $y) (>= $y $z)))
+      (= $g (<=> $a $b))
+      (= $h (is $obj $other))
+      (= $i (..< 0 (call count $xs)))
+      (= $j (call (-> (paren (..= 1 12)) contains) $month))
+      (= $k (?: $cond "yes" (paren (?: $other "maybe" "no"))))
+      (= $l (. (. (cast-string $n) (cast-i8 $m)) (cast-f32 1.5f)))
+      (= $m (&& (instanceof $x (path Foo)) (instanceof $y (type (generic list int)))))
+      (= $n (?? (?-> (?-> $user address) city) "unknown"))
+      (= $o (+ (+ (-> (index $list 0) qty) (index $map "k")) (index $t 1)))
+      (= (push-slot $list) 4)
+      (+= (-> (index (-> $order lines) 2) qty) 1)
+      (*= (:: Counter $hits) 2)
+      (= $p (. (. (-> (:: Status ACTIVE) value) (:: Suit class)) (:: self LIMIT)))
+      (= $q (new \App\Thing 1 (name: "a") (... $rest)))
+      (= $r (clone $thing))
+      (= $s (clone $user (name: "Ken") (age: 3)))
+      (= $t (fn (params (param $x int)) (returns int) (=> (* $x $factor))))
+      (= $u (fn (params) (returns void) (block (echo "hi"))))
+      (= $v (callable \Str\normalize))
+      (= $w (callable (-> $obj method)))
+      (= $x (call (:: Shape CIRCLE) 1.5f))
+      (= $y (call (:: Shape RECT) (w: 2.0f) (h: 3.0f)))
+      (= $z (?? (call \Env\get "PORT") (exit 2)))
+      (= $aa (?? $maybe (throw (new ValueError "missing"))))
+      (= $bb (map (=> "a" (list 1 2)) (=> "b" (list))))
+      (= $cc
+        (interp "sum: "
+          (+ $a $b)
+          ", item: "
+          (-> (index $items 0) name)
+          ", raw "
+          $name
+          "."))
+      (= $dd (interp "Hello " $name "\n  indented " $x))
+      (= $ee "no $interp here")
+      (= $ff (bytes 0 255))
+      (= $gg (call (:: (parent Named) describe)))
+      (= $hh (. __LINE__ __FILE__))
+      (= $ii
+        (call f (inout (-> $p x)) (inout (index $list $i)) (inout (:: Foo $count))))
+      (= $jj
+        (match
+          (subject $n)
+          (arm (..= 90 100) (=> "A"))
+          (arm (..< (- 10) 0) (=> "negative"))
+          (arm (== $limit) (== (call maxFor $u)) (=> "limit"))
+          (arm (typed $v int) (if (> $v 5)) (=> "big"))
+          (arm (typed _ string) (=> "text"))
+          (arm default (=> "other")))))))

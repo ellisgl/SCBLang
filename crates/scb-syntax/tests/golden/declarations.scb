@@ -1,0 +1,120 @@
+namespace App\Models;
+
+use Io\Writer;
+use App\Shapes\{Circle, Square as Sq};
+use function Str\normalize;
+use const Math\PI;
+
+const MAX_USERS: int = 100;
+
+interface Named
+{
+    public function name(): string;
+
+    public function greet(): string
+    {
+        return "hello {$this->name()}";
+    }
+}
+
+interface Labeled extends Named, \Stringable
+{
+}
+
+abstract class Animal implements Named
+{
+    protected static $count: int = 0;
+
+    public function __construct(protected readonly $name: string)
+    {
+        self::$count++;
+    }
+
+    abstract public function sound(): string;
+
+    final public function name(): string
+    {
+        return $this->name;
+    }
+}
+
+extendable class Dog extends Animal
+{
+    public const LEGS: int = 4;
+
+    private $tricks: list<string> = [];
+
+    public function __construct($name: string, public $age: u8 = 1)
+    {
+        parent::__construct($name);
+    }
+
+    public function sound(): string
+    {
+        return 'woof';
+    }
+
+    public function __destruct()
+    {
+    }
+}
+
+readonly class Config
+{
+    public function __construct(public $host: string, public $port: u16 = 8080) {}
+}
+
+struct Point implements Equatable
+{
+    public function __construct(public $x: f64, public $y: f64) {}
+
+    public mutating function shift($dx: f64, $dy: f64 = 0.0): void
+    {
+        $this->x += $dx;
+        $this->y += $dy;
+    }
+
+    public static function origin(): self
+    {
+        return new Point(x: 0.0, y: 0.0);
+    }
+}
+
+enum Suit
+{
+    case HEARTS;
+    case SPADES;
+
+    public const DEFAULT: Suit = Suit::HEARTS;
+
+    public function color(): string
+    {
+        return match ($this) {
+            self::HEARTS => 'red',
+            self::SPADES => 'black',
+        };
+    }
+}
+
+enum Status: int implements HasLabel
+{
+    case ACTIVE = 1;
+    case BANNED = -1;
+}
+
+enum Json
+{
+    case NULL;
+    case NUMBER($n: f64);
+    case LIST($items: list<Json>);
+    case OBJECT($fields: map<string, Json>);
+}
+
+function apply(inout $xs: list<int>, $f: fn(int): int, ...$extra: int): void
+{
+}
+
+function main($args: list<string>): int
+{
+    return 0;
+}

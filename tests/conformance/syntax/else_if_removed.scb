@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    if ($n == 0) {
+        echo "zero";
+    } else if ($n == 1) {
+        echo "one";
+    }
+}

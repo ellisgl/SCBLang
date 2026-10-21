@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    switch ($n) {
+        case 1:
+            echo "one";
+            break;
+    }
+}

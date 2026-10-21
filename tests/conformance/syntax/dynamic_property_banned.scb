@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: removed-syntax
+
+namespace Conformance;
+
+class User
+{
+    public $name: string = "x";
+}
+
+function main(): void
+{
+    $u: User = new User();
+    $field: string = "name";
+    echo $u->$field;
+}
