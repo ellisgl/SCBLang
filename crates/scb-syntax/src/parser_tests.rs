@@ -845,3 +845,8 @@ fn namespace_and_local_constants_need_identifier_names() {
         Vec::<&str>::new()
     );
 }
+
+#[test]
+fn new_self() {
+    assert_eq!(expr("new self(1)"), "(new self 1)");
+}

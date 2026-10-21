@@ -886,7 +886,25 @@ impl Parser {
             }
             _ => {}
         }
-        let class = self.named_type()?;
+        // `new self(…)`: the enclosing class (SPEC "Grammar sketch", Q36). Kept as a
+        // one-part name `self`, which no declaration can have since `self` is a keyword.
+        let class = if self.at_kw(Keyword::SelfKw) {
+            let span = self.bump();
+            NamedType {
+                name: QualifiedName {
+                    absolute: false,
+                    parts: vec![Ident {
+                        name: "self".into(),
+                        span,
+                    }],
+                    span,
+                },
+                args: Vec::new(),
+                span,
+            }
+        } else {
+            self.named_type()?
+        };
         if !self.at(Punct::LParen) {
             let span = self.span_from(start);
             self.report(

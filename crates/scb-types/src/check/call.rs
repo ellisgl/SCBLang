@@ -990,7 +990,23 @@ impl Ctx<'_> {
         };
         // `new Ref(0)`: type arguments may be omitted and inferred.
         let explicit_args = !class.args.is_empty();
-        let ty = if explicit_args {
+        let is_self = !class.name.absolute
+            && class.name.parts.len() == 1
+            && &*class.name.parts[0].name == "self";
+        let ty = if is_self {
+            // `new self(…)` (SPEC "Grammar sketch", Q36): the enclosing class, without
+            // late binding (a subclass inheriting the method still gets this class).
+            match self.frames.last().and_then(|f| f.self_decl) {
+                Some(d) => self.self_type(d),
+                None => {
+                    self.report(
+                        Diagnostic::new("unresolved-name", "`new self` outside a class or struct")
+                            .with_span(class.span),
+                    );
+                    Ty::ERROR
+                }
+            }
+        } else if explicit_args {
             self.resolve_type(file, &t, &scope)
         } else {
             match self.lookup_type(file, &class.name) {

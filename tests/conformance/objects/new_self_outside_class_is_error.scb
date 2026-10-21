@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: unresolved-name
+
+namespace Conformance;
+
+function make(): int
+{
+    return new self();
+}
+
+function main(): void
+{
+}

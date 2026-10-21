@@ -1271,3 +1271,35 @@ fn structs_with_nullable_fields_are_equatable() {
     );
     assert_eq!(body("$a: ?int = 1; $m: map<?int, string> = [];"), OK);
 }
+
+#[test]
+fn new_self_is_the_enclosing_class() {
+    let decls = "extendable class Money { public function __construct(public $cents: int) {} public static function zero(): self { return new self(0); } }\nclass Euro extends Money { }";
+    assert_eq!(
+        body_with(
+            decls,
+            "$m: Money = Euro::zero(); $n: Money = Money::zero();"
+        ),
+        OK
+    );
+    // No late binding: `Euro::zero()` is a `Money`, not a `Euro`.
+    assert_eq!(
+        body_with(decls, "$e: Euro = Euro::zero();"),
+        ["type-mismatch"]
+    );
+    assert_eq!(body("$x: int = new self();"), ["unresolved-name"]);
+    assert_eq!(
+        body_with(
+            "abstract class A { public static function make(): A { return new self(); } }",
+            ""
+        ),
+        ["type-mismatch"]
+    );
+    assert_eq!(
+        body_with(
+            "struct P { public $x: int = 0; public function copy(): P { return new self(); } }",
+            ""
+        ),
+        OK
+    );
+}

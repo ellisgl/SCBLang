@@ -484,6 +484,7 @@ struct Point
 
 - `self`, `parent`, `static::` and the `static` return type are kept. `static::` dispatch compiles to a vtable slot, so it is AOT-safe; only `extendable` classes pay for it.
 - `new static(...)` is allowed only when the constructor is `final`, or is declared by an interface or abstract class in the hierarchy. A subclass cannot change a constructor that `new static` relies on.
+- `new self(...)` builds the class whose body contains it, with no late binding: a subclass that inherits the method still gets the parent class. Abstract classes, interfaces and enums cannot be instantiated this way either.
 
 ### clone
 
@@ -918,7 +919,7 @@ CatchTypes    = NamedType { "|" NamedType } ;
 Primary       = Literal | Variable | QualifiedName | "(" Expr ")" | ListLit | MapLit
               | "self" | "static" | "parent" | "parent" "(" NamedType ")"
               | "clone" Unary | "clone" Args
-              | "new" NamedType Args | Closure | Match | Exit ;
+              | "new" ( NamedType | "self" ) Args | Closure | Match | Exit ;   (* new self: the enclosing class, no late binding *)
 Postfix       = Primary { "->" Name | "?->" Name | "::" Name | "::" Variable | "[" Expr "]"
               | "::<" TypeList ">" | Args } ;
 Args          = "(" [ Arg { "," Arg } [ "," ] ] ")" ;
