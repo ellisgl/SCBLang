@@ -1,0 +1,41 @@
+// EXPECT-STDOUT:
+// | 5 6 7 3
+namespace Conformance;
+
+// Function values of public static and instance methods, a class's `mutating`-free
+// methods, and a non-mutating built-in method still work.
+
+class Counter
+{
+    public function __construct(public $n: int) {}
+
+    public function get(): int
+    {
+        return $this->n;
+    }
+
+    public static function make($n: int): Counter
+    {
+        return new Counter($n);
+    }
+
+    private function hidden(): int
+    {
+        return $this->n + 2;
+    }
+
+    public function viaHidden(): fn(): int
+    {
+        return $this->hidden(...);
+    }
+}
+
+function main(): void
+{
+    $make: fn(int): Counter = Counter::make(...);
+    $c: Counter = $make(5);
+    $get: fn(): int = $c->get(...);
+    $xs: list<int> = [1, 2, 3];
+    $count: fn(): int = $xs->count(...);
+    echo $get(), ' ', $make(6)->get(), ' ', $c->viaHidden()(), ' ', $count(), "\n";
+}

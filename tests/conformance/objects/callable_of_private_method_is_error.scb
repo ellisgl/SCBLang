@@ -1,0 +1,19 @@
+// EXPECT-COMPILE-ERROR: visibility
+
+namespace Conformance;
+
+// Making a bound method value checks visibility like a call does.
+
+class Vault
+{
+    private function secret(): string
+    {
+        return "leaked";
+    }
+}
+
+function main(): void
+{
+    $f: fn(): string = (new Vault())->secret(...);
+    echo $f(), "\n";
+}

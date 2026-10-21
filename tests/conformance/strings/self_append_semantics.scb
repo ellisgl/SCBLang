@@ -1,0 +1,59 @@
+// EXPECT-STDOUT:
+// | abab
+// | x-a-x
+// | ab
+// | pq
+// | kept
+// | pab
+// | abc abc
+// | 3000000
+namespace Conformance;
+
+// `$s = $s . …` on a local appends in place (as `.=` does), so a loop of appends
+// stays linear; the result is the same as evaluating it as written.
+
+function boom(): string
+{
+    throw new \Exception('boom');
+}
+
+function main(): void
+{
+    $s: string = 'ab';
+    $s = $s . $s;
+    echo $s, "\n";
+
+    $t: string = 'x';
+    $t = $t . '-a-' . $t;
+    echo $t, "\n";
+
+    $u: string = 'a';
+    $u = $u . 'b';
+    echo $u, "\n";
+
+    // The value assigns `$v`: evaluated exactly as written.
+    $v: string = 'p';
+    $v = $v . ($v = 'q') . '';
+    echo $v, "\n";
+
+    $w: string = 'kept';
+    try {
+        $w = $w . boom();
+    } catch (\Exception) {
+    }
+    echo $w, "\n";
+
+    $p: string = 'ab';
+    $p = 'p' . $p;
+    echo $p, "\n";
+
+    $r: string = 'ab';
+    $copy: string = ($r = $r . 'c');
+    echo $r, ' ', $copy, "\n";
+
+    $big: string = '';
+    for ($i: int = 0; $i < 300000; $i++) {
+        $big = $big . 'xxxxxxxxxx';
+    }
+    echo $big->byteLength(), "\n";
+}

@@ -1,0 +1,29 @@
+// EXPECT-STDOUT:
+// | 0 1234 7
+namespace Conformance;
+
+// Inside its class, clone-with may set a private property; a `readonly` one may be
+// set from anywhere it is visible.
+
+class Account
+{
+    public function __construct(private $pin: int, public readonly $id: int) {}
+
+    public function reset(): Account
+    {
+        return clone($this, pin: 0);
+    }
+
+    public function pin(): int
+    {
+        return $this->pin;
+    }
+}
+
+function main(): void
+{
+    $a: Account = new Account(1234, 1);
+    $b: Account = $a->reset();
+    $c: Account = clone($a, id: 7);
+    echo $b->pin(), ' ', $a->pin(), ' ', $c->id, "\n";
+}

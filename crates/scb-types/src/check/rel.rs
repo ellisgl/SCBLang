@@ -153,7 +153,9 @@ impl Ctx<'_> {
                 iface != Iface::Stringable
                     && es.iter().all(|&e| self.conforms_inner(e, iface, visiting))
             }
-            TyKind::Range(_) => iface == Iface::Equatable,
+            // Equality of ranges is not specified yet (as values, or as the
+            // sequences they produce). SPEC-OPEN: Q46
+            TyKind::Range(_) => false,
             TyKind::Named(d, _) => self.named_conforms(d, iface, visiting),
         };
         visiting.pop();
@@ -189,7 +191,8 @@ impl Ctx<'_> {
             }
             TyKind::Tuple(es) | TyKind::Union(es) => {
                 let es = es.clone();
-                es.iter().find_map(|&e| self.user_hashing_inner(e, visiting))
+                es.iter()
+                    .find_map(|&e| self.user_hashing_inner(e, visiting))
             }
             TyKind::Named(d, _) if self.explicitly(*d, Iface::Hashable) => Some(*d),
             TyKind::Named(d, _) => {

@@ -490,9 +490,17 @@ impl Ctx<'_> {
         let (b, body_div) = self.block(body);
         let mut all_div = body_div;
         let mut out = Vec::new();
+        let mut outs = Vec::new();
+        if !body_div {
+            outs.push(self.facts_snapshot());
+        }
+        // A `catch` or `finally` can start anywhere in the body (after any of its
+        // assignments), a `finally` also anywhere in a `catch`.
+        let mut assigned = crate::check::pattern::assigned_names(&body.stmts);
         let throwable = self.decls.type_named("Throwable");
         for c in catches {
             self.restore_facts(before.clone());
+            self.forget_assigned(&assigned);
             self.push_scope();
             let file = self.file();
             let mut classes = Vec::new();
@@ -530,6 +538,9 @@ impl Ctx<'_> {
                 self.declare(&v.name, ty, v.span, Self::plain_meta(ty))
             });
             let (mut cb, cdiv) = self.block(&c.body);
+            if !cdiv {
+                outs.push(self.facts_snapshot());
+            }
             let mut locals = self.pop_scope();
             cb.locals.append(&mut locals);
             all_div &= cdiv;
@@ -539,7 +550,19 @@ impl Ctx<'_> {
                 body: cb,
             });
         }
-        self.restore_facts(before);
+        for c in catches {
+            assigned.extend(crate::check::pattern::assigned_names(&c.body.stmts));
+        }
+        // After the statement: what holds at the end of the body and of every
+        // `catch` that can complete; a `finally` starts from what holds everywhere.
+        match finally {
+            Some(_) => {
+                self.restore_facts(before);
+                self.forget_assigned(&assigned);
+            }
+            None if outs.is_empty() => self.restore_facts(before),
+            None => self.join_facts(outs),
+        }
         let (fin, fin_div) = match finally {
             Some(f) => {
                 let depth = self.frame().loops.len();

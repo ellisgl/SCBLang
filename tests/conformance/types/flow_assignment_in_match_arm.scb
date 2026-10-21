@@ -1,0 +1,25 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+// After a `match`, an assignment in one arm still counts.
+
+enum E
+{
+    case A;
+    case B;
+}
+
+function main(): void
+{
+    $z: ?int = 1;
+    if ($z == null) {
+        return;
+    }
+    $e: E = E::A;
+    match ($e) {
+        E::A => $z = null,
+        E::B => 0,
+    };
+    echo $z + 1, "\n";
+}

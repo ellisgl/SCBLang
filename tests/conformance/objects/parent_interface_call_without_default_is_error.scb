@@ -1,0 +1,23 @@
+// EXPECT-COMPILE-ERROR: abstract-call
+
+namespace Conformance;
+
+// `parent(I)::m()` needs a default method in the interface.
+
+interface Sized
+{
+    public function size(): int;
+}
+
+class Box implements Sized
+{
+    public function size(): int
+    {
+        return parent(Sized)::size() + 1;
+    }
+}
+
+function main(): void
+{
+    echo (new Box())->size(), "\n";
+}

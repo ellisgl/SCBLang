@@ -31,7 +31,7 @@ A directory containing a `main.scb` whose header has an `EXPECT-*` directive is 
 
 - Every test file uses `namespace Conformance;` (single-file mode; SPEC "Modules").
 - Test names describe the behavior: `cow_list_copy.scb`, not `test1.scb`.
-- Compile-error tests contain exactly one error.
+- Compile-error tests contain exactly one mistake. The runner fails a compile-error test that reports any other error kind.
 - When a test exercises a `SPEC-OPEN` provisional behavior, add `// SPEC-OPEN: Qn` to its header.
 
 ## Runner

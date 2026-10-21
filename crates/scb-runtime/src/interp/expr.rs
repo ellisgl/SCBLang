@@ -635,6 +635,7 @@ impl Interp<'_> {
                 match self.eval_init(init) {
                     Ok(v) => super::set_field(&mut obj, *idx, v),
                     Err(e) => {
+                        unconstructed(&obj);
                         self.abandon_args(vals, inouts)?;
                         return Err(e);
                     }
@@ -645,6 +646,11 @@ impl Interp<'_> {
             return Ok(obj);
         };
         let (r, mut end) = self.call_func(ctor, Some(obj), vals, &[], span);
+        if r.is_err()
+            && let Some(this) = &end.this
+        {
+            unconstructed(this);
+        }
         self.write_back(inouts, &mut end)?;
         r?;
         Ok(end.this.unwrap_or_default())
@@ -690,6 +696,15 @@ impl Interp<'_> {
             format!("{shown} is not a value of `{name}`"),
             span,
         ))
+    }
+}
+
+/// An instance whose construction failed (a default or the constructor threw) is
+/// never destructed: its destructor could read properties that were never assigned.
+/// SPEC-OPEN: Q45
+fn unconstructed(obj: &Value) {
+    if let Value::Object(o) = obj {
+        o.borrow_mut().destructor = None;
     }
 }
 

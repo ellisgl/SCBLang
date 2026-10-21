@@ -55,7 +55,7 @@ Types are interned (`ty.rs`): a `Ty` is a small integer, unions are normalized, 
 
 All interpreter state lives in an `Isolate`. Nothing is global; this is CLAUDE.md architecture rule 1. The isolate owns its stdout, stderr, stdin and environment as injected handles (`IsolateIo`): only the CLI connects real OS handles, and a later FastCGI server can give each request its own. Stdout is buffered and flushed before stdin reads and on exit. The compiled `Program` is immutable and shared as `Arc<Program>`, so one compilation can serve many isolates.
 
-**Values** (`value.rs`): primitives are stored inline (`I8(i8)` … `F64(f64)`, `Bool`). Strings, bytes, lists, maps, sets, tuples, structs and enums with payloads sit behind an `Rc` and are copy-on-write through `Rc::make_mut`: a write copies only a shared level. Class instances are `Rc<RefCell<…>>`.
+**Values** (`value.rs`): primitives are stored inline (`I8(i8)` … `F64(f64)`, `Bool`). Strings, bytes, lists, maps, sets, tuples, structs and enums with payloads sit behind an `Rc` and are copy-on-write through `Rc::make_mut`: a write copies only a shared level. Class instances are `Rc<RefCell<…>>`. Appends stay linear only while the string is unshared: `.=` appends in place, and the checker lowers `$s = $s . …` on a local to `.=` (`check/place.rs`, `self_append`), since reading `$s` first would share it and make every append a copy.
 
 **Interpreter** (`interp/`): a tree-walking evaluator over the TIR.
 - *Errors.* Every evaluation returns `Result<_, Flow>`, where `Flow` is a thrown value, `exit`, `return`, `break`/`continue`, a fatal error or `abort`. A throw and an `exit` carry the position they came from; the spec's "discarded by …" and "superseded by …" reports use it.

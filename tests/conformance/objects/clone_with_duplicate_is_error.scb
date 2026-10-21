@@ -1,0 +1,14 @@
+// EXPECT-COMPILE-ERROR: wrong-arguments
+
+namespace Conformance;
+
+class Point
+{
+    public function __construct(public $x: int, public $y: int) {}
+}
+
+function main(): void
+{
+    $a: Point = new Point(1, 2);
+    $b: Point = clone($a, x: 3, x: 4);
+}

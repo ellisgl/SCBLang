@@ -1,0 +1,42 @@
+// SPEC-OPEN: Q45
+// EXPECT-STDOUT:
+// | caught ctor failed
+// | ~ok 2
+// | end
+// | ~ok 2
+namespace Conformance;
+
+// An object whose constructor threw is never destructed (Q45): its destructor could
+// read properties that were never assigned. A completed object still is.
+
+class Resource
+{
+    public $id: int;
+    public $name: string;
+
+    public function __construct($fail: bool)
+    {
+        if ($fail) {
+            throw new \Exception('ctor failed');
+        }
+        $this->id = 1;
+        $this->name = 'ok';
+    }
+
+    public function __destruct()
+    {
+        echo '~', $this->name, ' ', $this->id + 1, "\n";
+    }
+}
+
+function main(): void
+{
+    try {
+        $bad: Resource = new Resource(true);
+    } catch ($e: \Exception) {
+        echo 'caught ', $e->getMessage(), "\n";
+    }
+    $good: Resource = new Resource(false);
+    $good = new Resource(false);
+    echo "end\n";
+}

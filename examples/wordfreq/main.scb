@@ -1,4 +1,4 @@
-    namespace WordFreq;
+        namespace WordFreq;
 
 // Word-frequency count: reads text from stdin, prints the most frequent words.
 //

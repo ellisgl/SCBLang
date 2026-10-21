@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: visibility
+
+namespace Conformance;
+
+// Clone-with writes the property, so visibility applies: a private property cannot
+// be set from outside its class.
+
+class Account
+{
+    public function __construct(private $pin: int) {}
+}
+
+function main(): void
+{
+    $a: Account = new Account(1234);
+    $b: Account = clone($a, pin: 0);
+}

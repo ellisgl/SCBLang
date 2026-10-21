@@ -1,0 +1,14 @@
+// SPEC-OPEN: Q44
+// EXPECT-COMPILE-ERROR: mutating-temporary
+
+namespace Conformance;
+
+// A `mutating` method of a value type as a function value would change a copy of the receiver (Q44).
+
+function main(): void
+{
+    $xs: list<int> = [1];
+    $push: fn(int): void = $xs->push(...);
+    $push(2);
+    echo $xs->count(), "\n";
+}

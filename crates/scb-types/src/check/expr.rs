@@ -767,7 +767,17 @@ impl Ctx<'_> {
                 );
                 continue;
             };
-            let fty = self.decls.ty(d).fields[idx as usize].ty;
+            let field = &self.decls.ty(d).fields[idx as usize];
+            let (fty, owner, vis) = (field.ty, field.owner, field.visibility);
+            // A clone-with writes the property: visibility applies as for any write
+            // (`readonly` does not: setting it on a copy is what clone-with is for).
+            self.check_visibility(owner, vis, &format!("${}", name.name), name.span);
+            if fields.iter().any(|(i, _)| *i == idx) {
+                self.report(
+                    Diagnostic::new("wrong-arguments", format!("`{}` is given twice", name.name))
+                        .with_span(name.span),
+                );
+            }
             fields.push((idx, self.expr_as(v, fty)));
         }
         Expr {

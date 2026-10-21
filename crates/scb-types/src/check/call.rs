@@ -342,6 +342,25 @@ impl Ctx<'_> {
         }
     }
 
+    /// A method called without dynamic dispatch (`X::m()`, `parent::m()`, `X::m(...)`)
+    /// must have a body: an abstract or bodiless interface method would only fail at
+    /// run time.
+    fn require_body(&mut self, mid: MethodId, span: Span) {
+        let m = self.decls.method(mid);
+        if m.has_body || self.is_builtin(mid) {
+            return;
+        }
+        let what = format!("{}::{}", self.short_name(m.owner), m.name);
+        self.report(
+            Diagnostic::new(
+                "abstract-call",
+                format!("`{what}()` has no body and cannot be called directly"),
+            )
+            .with_span(span)
+            .with_note("only a call on an instance dispatches to an implementation"),
+        );
+    }
+
     fn builtin_name(&self, mid: MethodId) -> Builtin {
         let m = self.decls.method(mid);
         let sep = if m.is_static { "::" } else { "." };
@@ -434,7 +453,9 @@ impl Ctx<'_> {
         let m = self.decls.method(mid);
         let (is_static, owner, vis, func) = (m.is_static, m.owner, m.visibility, m.func);
         self.check_visibility(owner, vis, &format!("{}()", name.name), name.span);
-        if !is_static {
+        if is_static {
+            self.require_body(mid, name.span);
+        } else {
             self.report(
                 Diagnostic::new(
                     "static-call",
@@ -626,6 +647,7 @@ impl Ctx<'_> {
         };
         let m = self.decls.method(mid);
         let (is_static, func) = (m.is_static, m.func);
+        self.require_body(mid, name.span);
         if name.name.as_ref() == "__construct" && !self.frame().in_ctor {
             self.report(
                 Diagnostic::new(
@@ -912,6 +934,37 @@ impl Ctx<'_> {
                 let Some((mid, decl)) = self.find_method_on(recv.ty, &name.name, name.span) else {
                     return Self::error_expr(span);
                 };
+                let m = self.decls.method(mid);
+                let (owner, vis, is_static, mutating) =
+                    (m.owner, m.visibility, m.is_static, m.mutating);
+                self.check_visibility(owner, vis, &format!("{}()", name.name), name.span);
+                if is_static {
+                    let owner = self.short_name(owner);
+                    self.report(
+                        Diagnostic::new("static-call", format!("`{}` is static", name.name))
+                            .with_span(name.span)
+                            .with_fix(format!("write `{owner}::{}(...)`", name.name)),
+                    );
+                }
+                // The value would hold a copy of the receiver: calling it could
+                // only change that copy. SPEC-OPEN: Q44
+                if mutating && !self.is_class(recv.ty) {
+                    self.report(
+                        Diagnostic::new(
+                            "mutating-temporary",
+                            format!(
+                                "the `mutating` method `{}` cannot be used as a value",
+                                name.name
+                            ),
+                        )
+                        .with_span(span)
+                        .with_note(
+                            "the value would change a copy of the receiver, not the variable",
+                        )
+                        .with_fix("call it directly, or wrap the variable in a class"),
+                    );
+                    return Self::error_expr(span);
+                }
                 let callee = self.method_callee(mid, decl, recv.ty, name.span);
                 let mut sig = self.decls.method(mid).sig.clone();
                 for p in &mut sig.params {
@@ -950,6 +1003,21 @@ impl Ctx<'_> {
                     );
                     return Self::error_expr(span);
                 };
+                let m = self.decls.method(mid);
+                let (owner, vis, is_static) = (m.owner, m.visibility, m.is_static);
+                self.check_visibility(owner, vis, &format!("{}()", name.name), name.span);
+                if !is_static {
+                    self.report(
+                        Diagnostic::new(
+                            "static-call",
+                            format!("`{}` is an instance method", name.name),
+                        )
+                        .with_span(name.span)
+                        .with_fix(format!("bind it to an instance: `$x->{}(...)`", name.name)),
+                    );
+                    return Self::error_expr(span);
+                }
+                self.require_body(mid, name.span);
                 let m = self.decls.method(mid);
                 (CallTarget::Func(m.func), m.sig.clone())
             }

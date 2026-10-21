@@ -1,0 +1,16 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+// After a ternary, an assignment in one branch still counts.
+
+function main(): void
+{
+    $z: ?int = 1;
+    if ($z == null) {
+        return;
+    }
+    $c: bool = true;
+    $w: int = $c ? ($z = null) ?? 2 : 3;
+    echo $z + $w, "\n";
+}

@@ -176,6 +176,11 @@ impl Isolate {
 
     /// Runs `main` with the user arguments (raw bytes; UTF-8 is checked before
     /// `main`) and returns the process exit code. Stdout is flushed at the end.
+    ///
+    /// Run it on a thread with a large stack (the CLI uses 1 GiB): the interpreter
+    /// recurses on the Rust stack per SCB call (up to 10 000 deep) and per level
+    /// when deeply nested values are freed, and running out of native stack aborts
+    /// the process instead of raising SCB's "stack overflow" fatal error.
     pub fn run(&mut self, program: &Arc<Program>, args: &[Vec<u8>]) -> RunOutcome {
         let code = Interp::new(self, program).run_main(args);
         let _ = self.flush_stdout();
