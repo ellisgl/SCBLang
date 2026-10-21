@@ -1,0 +1,38 @@
+// EXPECT-STDOUT:
+// | 2 3 2 2
+namespace Conformance;
+
+// Past a class reference, disjoint properties may be passed `inout` together
+// (checked at run time, not rejected at compile time).
+
+class Inner
+{
+    public $a: int = 1;
+}
+
+class Outer
+{
+    public $a: int = 1;
+    public $b: int = 2;
+    public $inner: Inner;
+
+    public function __construct()
+    {
+        $this->inner = new Inner();
+    }
+}
+
+function two(inout $x: int, inout $y: int): void
+{
+    $x++;
+    $y++;
+}
+
+function main(): void
+{
+    $o: Outer = new Outer();
+    two(inout $o->a, inout $o->b);
+    $p: Outer = new Outer();
+    two(inout $p->inner->a, inout $p->a);
+    echo $o->a, ' ', $o->b, ' ', $p->a, ' ', $p->inner->a, "\n";
+}

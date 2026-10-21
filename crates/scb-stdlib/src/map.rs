@@ -1,9 +1,13 @@
 //! `map<K, V>` and `set<T>` (SPEC "Core library"). Both keep insertion order; map
 //! callbacks receive `($value, $key)`.
+//!
+//! Keys are found with the interpreter's key operations (`Interp::key_find` …), which
+//! run user `hash()` / `equals()` for keys of a type implementing `Hashable` itself.
+//! A new map built from an existing one's entries reuses their stored hashes: its keys
+//! are already distinct.
 
 use std::rc::Rc;
 
-use scb_runtime::interp::{hash_value, values_equal};
 use scb_runtime::value::{OrderedMap, Value};
 use scb_runtime::{Interp, NativeCall, Natives, R};
 
@@ -65,10 +69,6 @@ fn storage_mut(c: &mut NativeCall) -> &mut OrderedMap {
     }
 }
 
-fn lookup(m: &OrderedMap, k: &Value) -> Option<usize> {
-    m.find(hash_value(k), k, &mut values_equal)
-}
-
 fn count(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     Ok(Value::I64(storage(c).len() as i64))
 }
@@ -77,13 +77,15 @@ fn is_empty(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     Ok(Value::Bool(storage(c).is_empty()))
 }
 
-fn has(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
-    Ok(Value::Bool(lookup(&storage(c), &c.args[0]).is_some()))
+fn has(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+    Ok(Value::Bool(it.key_find(&storage(c), &c.args[0])?.is_some()))
 }
 
-fn get(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+fn get(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let m = storage(c);
-    Ok(lookup(&m, &c.args[0]).map_or(Value::Null, |p| m.get(p).expect("found").1.clone()))
+    Ok(it
+        .key_find(&m, &c.args[0])?
+        .map_or(Value::Null, |p| m.get(p).expect("found").1.clone()))
 }
 
 fn keys(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
@@ -107,11 +109,9 @@ fn entries(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     ))
 }
 
-fn remove(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+fn remove(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let k = c.args[0].clone();
-    Ok(storage_mut(c)
-        .remove(hash_value(&k), &k, &mut values_equal)
-        .unwrap_or(Value::Null))
+    Ok(it.map_remove(storage_mut(c), &k)?.unwrap_or(Value::Null))
 }
 
 fn clear(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
@@ -120,11 +120,11 @@ fn clear(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
 }
 
 /// SPEC: the right side wins; keys are never renumbered.
-fn merge(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+fn merge(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let mut out = (*storage(c)).clone();
     if let Value::Map(other) = &c.args[0] {
         for (k, v) in other.iter() {
-            out.insert(hash_value(k), k.clone(), v.clone(), &mut values_equal);
+            it.map_insert(&mut out, k.clone(), v.clone())?;
         }
     }
     Ok(Value::Map(Rc::new(out)))
@@ -133,12 +133,12 @@ fn merge(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
 fn filter(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let (f, span) = (c.args[0].clone(), c.span);
     let mut out = OrderedMap::new();
-    for (k, v) in storage(c).iter() {
+    for (h, (k, v)) in storage(c).iter_hashed() {
         if it
             .call_value(&f, vec![v.clone(), k.clone()], span)?
             .as_bool()
         {
-            out.insert(hash_value(k), k.clone(), v.clone(), &mut values_equal);
+            out.insert_at(None, h, k.clone(), v.clone());
         }
     }
     Ok(Value::Map(Rc::new(out)))
@@ -147,9 +147,9 @@ fn filter(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
 fn map_values(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let (f, span) = (c.args[0].clone(), c.span);
     let mut out = OrderedMap::new();
-    for (k, v) in storage(c).iter() {
+    for (h, (k, v)) in storage(c).iter_hashed() {
         let nv = it.call_value(&f, vec![v.clone(), k.clone()], span)?;
-        out.insert(hash_value(k), k.clone(), nv, &mut values_equal);
+        out.insert_at(None, h, k.clone(), nv);
     }
     Ok(Value::Map(Rc::new(out)))
 }
@@ -186,15 +186,15 @@ fn all(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
 
 // ---------- sets ----------
 
-fn set_add(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+fn set_add(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let v = c.args[0].clone();
-    storage_mut(c).insert(hash_value(&v), v, Value::Null, &mut values_equal);
+    it.map_insert(storage_mut(c), v, Value::Null)?;
     Ok(Value::Null)
 }
 
-fn set_remove(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+fn set_remove(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let v = c.args[0].clone();
-    storage_mut(c).remove(hash_value(&v), &v, &mut values_equal);
+    it.map_remove(storage_mut(c), &v)?;
     Ok(Value::Null)
 }
 
@@ -205,29 +205,29 @@ fn other_set(c: &NativeCall) -> Rc<OrderedMap> {
     }
 }
 
-fn set_union(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+fn set_union(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
     let mut out = (*storage(c)).clone();
     for (k, _) in other_set(c).iter() {
-        out.insert(hash_value(k), k.clone(), Value::Null, &mut values_equal);
+        it.map_insert(&mut out, k.clone(), Value::Null)?;
     }
     Ok(Value::Set(Rc::new(out)))
 }
 
-fn set_keep(c: &NativeCall, keep_common: bool) -> Value {
+fn set_keep(it: &mut Interp<'_>, c: &NativeCall, keep_common: bool) -> R<Value> {
     let other = other_set(c);
     let mut out = OrderedMap::new();
-    for (k, _) in storage(c).iter() {
-        if lookup(&other, k).is_some() == keep_common {
-            out.insert(hash_value(k), k.clone(), Value::Null, &mut values_equal);
+    for (h, (k, _)) in storage(c).iter_hashed() {
+        if it.key_find(&other, k)?.is_some() == keep_common {
+            out.insert_at(None, h, k.clone(), Value::Null);
         }
     }
-    Value::Set(Rc::new(out))
+    Ok(Value::Set(Rc::new(out)))
 }
 
-fn set_intersect(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
-    Ok(set_keep(c, true))
+fn set_intersect(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+    set_keep(it, c, true)
 }
 
-fn set_diff(_: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
-    Ok(set_keep(c, false))
+fn set_diff(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+    set_keep(it, c, false)
 }

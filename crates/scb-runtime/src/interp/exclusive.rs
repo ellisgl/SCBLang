@@ -72,7 +72,11 @@ impl Interp<'_> {
                     Some(i) => l[i].clone(),
                     None => break,
                 },
-                (EProj::Map(k, h), Value::Map(m)) => {
+                // A key compared with user code is not looked up here (that would
+                // run it again): the claim stays on the storage holding the map,
+                // which covers everything inside it.
+                (EProj::Map(_, _, true), _) => break,
+                (EProj::Map(k, h, false), Value::Map(m)) => {
                     match m.find(*h, k, &mut super::ops::values_equal) {
                         Some(pos) => m.get(pos).expect("found").1.clone(),
                         None => break,

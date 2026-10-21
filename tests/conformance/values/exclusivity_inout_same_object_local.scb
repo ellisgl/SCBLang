@@ -1,0 +1,21 @@
+// EXPECT-COMPILE-ERROR: exclusivity-violation
+
+namespace Conformance;
+
+// SPEC "Exclusivity": `swap(inout $a, inout $a)` is an error for a local holding a
+// class instance too: both arguments name the local's own storage.
+
+class Box
+{
+    public $n: int = 1;
+}
+
+function two(inout $a: Box, inout $b: Box): void
+{
+}
+
+function main(): void
+{
+    $x: Box = new Box();
+    two(inout $x, inout $x);
+}

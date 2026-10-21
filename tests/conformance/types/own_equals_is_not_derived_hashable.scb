@@ -1,9 +1,8 @@
-// SPEC-OPEN: Q43
 // EXPECT-COMPILE-ERROR: unsatisfied-bound
 
 namespace Conformance;
 
-// A struct with its own `equals()` does not derive `Hashable` (Q43): a derived hash
+// A struct with its own `equals()` does not derive `Hashable` (SPEC "Auto-derivation"): a derived hash
 // would disagree with it (here 'A' and 'a' are equal but hash differently).
 
 struct Name implements \Equatable

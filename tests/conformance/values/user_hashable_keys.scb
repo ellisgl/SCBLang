@@ -1,0 +1,127 @@
+// EXPECT-STDOUT:
+// | literal 1 2
+// | assign 1 9 true
+// | coalesce 9 5
+// | remove 7 1 false
+// | ci 1 2
+// | set 2 true false
+// | set ops 3 1 1
+// | nested list 1 struct 1 tuple 1
+// | values 1,2,3 3
+// | inout 10
+// | equal true false true
+// | foreach 1:9
+// | merge 2 filter 1 mapped 18
+namespace Conformance;
+
+// SPEC "Equality and comparison": `Hashable` governs map keys and set elements. A
+// type that implements it itself is hashed with its `hash()` and compared with its
+// `equals()`, wherever it appears in a key.
+
+class Point implements \Hashable
+{
+    public function __construct(public $x: int, public $y: int) {}
+
+    public function equals($other: self): bool
+    {
+        return $this->x == $other->x && $this->y == $other->y;
+    }
+
+    public function hash(): int
+    {
+        return $this->x * 31 + $this->y;
+    }
+}
+
+// Case-insensitive names.
+struct Name implements \Hashable
+{
+    public function __construct(public $s: string) {}
+
+    public function equals($other: self): bool
+    {
+        return $this->s->toLower() == $other->s->toLower();
+    }
+
+    public function hash(): int
+    {
+        return $this->s->toLower()->byteLength();
+    }
+}
+
+// Derives `Hashable`; its `Point` field is compared with `Point::equals()`.
+struct Labeled
+{
+    public function __construct(public $label: string, public $at: Point) {}
+}
+
+function bump(inout $n: int): void
+{
+    $n += 9;
+}
+
+function main(): void
+{
+    $m: map<Point, int> = [new Point(1, 2) => 1, new Point(1, 2) => 2, new Point(3, 4) => 3];
+    echo 'literal ', $m[new Point(1, 2)] == 2 ? 1 : 0, ' ', $m->count(), "\n";
+
+    $m[new Point(1, 2)] = 7;
+    $m[new Point(5, 5)] = 9;
+    echo 'assign ', $m[new Point(1, 2)] == 7 ? 1 : 0, ' ', $m[new Point(5, 5)], ' ',
+        $m->has(new Point(3, 4)) ? 'true' : 'false', "\n";
+
+    $m[new Point(5, 5)] ??= 100;
+    $m[new Point(6, 6)] ??= 5;
+    echo 'coalesce ', $m[new Point(5, 5)], ' ', $m[new Point(6, 6)], "\n";
+
+    $removed: ?int = $m->remove(new Point(1, 2));
+    echo 'remove ', $removed ?? -1, ' ', $m->get(new Point(9, 9)) == null ? 1 : 0, ' ',
+        $m->has(new Point(1, 2)) ? 'true' : 'false', "\n";
+
+    $names: map<Name, int> = [];
+    $names[new Name('Ken')] = 1;
+    $names[new Name('KEN')] = 2;
+    echo 'ci ', $names->count(), ' ', $names[new Name('ken')], "\n";
+
+    $s: set<Point> = [new Point(1, 1), new Point(1, 1), new Point(2, 2)];
+    $s->add(new Point(2, 2));
+    $s->remove(new Point(7, 7));
+    echo 'set ', $s->count(), ' ', $s->has(new Point(1, 1)) ? 'true' : 'false', ' ',
+        $s->has(new Point(3, 3)) ? 'true' : 'false', "\n";
+    $t: set<Point> = [new Point(2, 2), new Point(3, 3)];
+    echo 'set ops ', $s->union($t)->count(), ' ', $s->intersect($t)->count(), ' ',
+        $s->diff($t)->count(), "\n";
+
+    $byPath: map<list<Point>, int> = [[new Point(1, 1), new Point(2, 2)] => 1];
+    $byLabel: map<Labeled, int> = [new Labeled('a', new Point(1, 1)) => 1];
+    $byPair: map<tuple<int, Point>, int> = [[1, new Point(0, 0)] => 1];
+    echo 'nested list ', $byPath[[new Point(1, 1), new Point(2, 2)]],
+        ' struct ', $byLabel[new Labeled('a', new Point(1, 1))],
+        ' tuple ', $byPair[[1, new Point(0, 0)]], "\n";
+
+    $lists: map<Point, list<int>> = [new Point(0, 1) => [1]];
+    $lists[new Point(0, 1)][] = 2;
+    $lists[new Point(0, 1)]->push(3);
+    echo 'values ', $lists[new Point(0, 1)]->join(','), ' ', $lists[new Point(0, 1)]->count(), "\n";
+
+    $counts: map<Point, int> = [new Point(4, 4) => 1];
+    bump(inout $counts[new Point(4, 4)]);
+    echo 'inout ', $counts[new Point(4, 4)], "\n";
+
+    $a: map<Point, int> = [new Point(1, 1) => 1, new Point(2, 2) => 2];
+    $b: map<Point, int> = [new Point(2, 2) => 2, new Point(1, 1) => 1];
+    $c: set<Point> = [new Point(1, 1)];
+    $d: set<Point> = [new Point(1, 1)];
+    echo 'equal ', $a == $b ? 'true' : 'false', ' ', $a == [new Point(1, 1) => 1] ? 'true' : 'false',
+        ' ', $c == $d ? 'true' : 'false', "\n";
+
+    $one: map<Point, int> = [new Point(1, 9) => 9];
+    foreach ($one as $k => $v) {
+        echo 'foreach ', $k->x, ':', $v, "\n";
+    }
+
+    $merged: map<Point, int> = $a->merge([new Point(1, 1) => 10]);
+    $small: map<Point, int> = $merged->filter(fn($v: int, $k: Point): bool => $v > 5);
+    $doubled: map<Point, int> = $small->mapValues(fn($v: int, $k: Point): int => $v + 8);
+    echo 'merge ', $merged->count(), ' filter ', $small->count(), ' mapped ', $doubled[new Point(1, 1)], "\n";
+}

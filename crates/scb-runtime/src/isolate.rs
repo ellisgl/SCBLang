@@ -101,6 +101,8 @@ pub struct Isolate {
     pub(crate) destruct_floor: usize,
     /// Each class's `__destruct`, if it has one (resolved on first use).
     pub(crate) destructors: HashMap<DeclId, Option<FuncId>>,
+    /// Whether each type implements `Hashable` itself (resolved on first use).
+    pub(crate) user_hashed: HashMap<DeclId, bool>,
     /// Statics in the order their initializers finished (destructed in reverse).
     pub(crate) static_order: Vec<StaticId>,
     /// Modifying accesses in progress on class properties and statics (SPEC
@@ -144,6 +146,7 @@ impl Isolate {
             destruct_queue: DestructQueue::default(),
             destruct_floor: 0,
             destructors: HashMap::new(),
+            user_hashed: HashMap::new(),
             static_order: Vec::new(),
             exclusive: Vec::new(),
             next_access: 0,

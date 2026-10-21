@@ -1,0 +1,31 @@
+// EXPECT-COMPILE-ERROR: mutating-temporary
+
+namespace Conformance;
+
+// A temporary of interface type may be a struct: a `mutating` call on it would
+// change a copy that is then lost.
+
+interface Bumpable
+{
+    public mutating function bump(): void;
+}
+
+struct Counter implements Bumpable
+{
+    public function __construct(public $n: int) {}
+
+    public mutating function bump(): void
+    {
+        $this->n++;
+    }
+}
+
+function make(): Bumpable
+{
+    return new Counter(1);
+}
+
+function main(): void
+{
+    make()->bump();
+}

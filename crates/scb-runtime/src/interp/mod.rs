@@ -24,12 +24,14 @@
 //!
 //! The submodules: `expr` (expressions), `stmt` (statements), `place` (reading and
 //! writing places, copy-on-write), `ops` (arithmetic, conversions, equality,
-//! ordering, hashing), `pattern` (patterns and runtime type tests).
+//! ordering, hashing), `keys` (map keys and set elements, with user `Hashable`),
+//! `pattern` (patterns and runtime type tests).
 
 mod cycles;
 mod destruct;
 mod exclusive;
 mod expr;
+mod keys;
 mod ops;
 mod pattern;
 mod place;
@@ -130,6 +132,7 @@ impl<'a> Interp<'a> {
         iso.consts = program.consts.iter().map(|_| None).collect();
         iso.vtables.clear();
         iso.destructors.clear();
+        iso.user_hashed.clear();
         iso.static_order.clear();
         iso.calls.clear();
         iso.ret_hint = None;

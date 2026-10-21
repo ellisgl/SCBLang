@@ -1,0 +1,29 @@
+// EXPECT-COMPILE-ERROR: mutating-temporary
+
+namespace Conformance;
+
+// SPEC "Nested mutation": a `mutating` method cannot be a function value, also
+// through an interface type (the value may be a struct; the function value would
+// change a copy of it).
+
+interface Bumpable
+{
+    public mutating function bump(): void;
+}
+
+struct Counter implements Bumpable
+{
+    public function __construct(public $n: int) {}
+
+    public mutating function bump(): void
+    {
+        $this->n++;
+    }
+}
+
+function main(): void
+{
+    $b: Bumpable = new Counter(1);
+    $f: fn(): void = $b->bump(...);
+    $f();
+}

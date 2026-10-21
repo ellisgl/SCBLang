@@ -1,4 +1,3 @@
-// SPEC-OPEN: Q45
 // EXPECT-STDOUT:
 // | caught ctor failed
 // | ~ok 2
@@ -6,7 +5,7 @@
 // | ~ok 2
 namespace Conformance;
 
-// An object whose constructor threw is never destructed (Q45): its destructor could
+// An object whose constructor threw is never destructed (SPEC "Destructors"): its destructor could
 // read properties that were never assigned. A completed object still is.
 
 class Resource

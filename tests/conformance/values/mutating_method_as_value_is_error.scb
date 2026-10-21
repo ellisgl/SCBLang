@@ -1,9 +1,8 @@
-// SPEC-OPEN: Q44
 // EXPECT-COMPILE-ERROR: mutating-temporary
 
 namespace Conformance;
 
-// A `mutating` method of a value type as a function value would change a copy of the receiver (Q44).
+// A `mutating` method of a value type as a function value would change a copy of the receiver (SPEC "Nested mutation").
 
 function main(): void
 {
