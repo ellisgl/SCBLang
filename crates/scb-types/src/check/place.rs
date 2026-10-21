@@ -167,11 +167,7 @@ impl Ctx<'_> {
         nullsafe: bool,
         access: Access,
     ) -> Option<Place> {
-        let is_place_expr = matches!(
-            strip_parens(object).kind,
-            A::Var(_) | A::Prop { .. } | A::Index { .. } | A::StaticProp { .. }
-        );
-        if is_place_expr && !nullsafe {
+        if is_place_expr(object) && !nullsafe {
             return self.resolve_place(object, access);
         }
         let x = if nullsafe {
@@ -235,6 +231,12 @@ impl Ctx<'_> {
                 self.check_visibility(owner, vis, &format!("${fname}"), name.span);
                 // Fields of a generic stdlib class (`Ref<T>::$value`) through `Ref<int>`.
                 let fty = self.instantiate_member(d, ty, fty);
+                // A readonly property reached from a local through readonly properties
+                // may have been narrowed by a condition.
+                let fty = match self.readonly_path(&base, idx, d) {
+                    Some(key) => self.frame().facts.get(&key).copied().unwrap_or(fty),
+                    None => fty,
+                };
                 (Proj::Field(idx), fty)
             }
             A::Index { index, .. } => {
@@ -327,6 +329,38 @@ impl Ctx<'_> {
         Some(base)
     }
 
+    /// The fact key of `base->field` when it is a chain of readonly properties from a
+    /// local; `None` otherwise.
+    pub(crate) fn readonly_path(
+        &self,
+        base: &Place,
+        idx: crate::decls::FieldIdx,
+        decl: DeclId,
+    ) -> Option<super::FactKey> {
+        let PlaceRoot::Local(root) = base.root else {
+            return None;
+        };
+        if !self.decls.ty(decl).fields[idx as usize].readonly {
+            return None;
+        }
+        let mut path = Vec::new();
+        for (i, proj) in base.path.iter().enumerate() {
+            let Proj::Field(f) = proj else { return None };
+            let level = if i == 0 {
+                base.root_ty
+            } else {
+                base.tys[i - 1]
+            };
+            let d = self.class_of(level)?;
+            if !self.decls.ty(d).fields[*f as usize].readonly {
+                return None;
+            }
+            path.push(*f);
+        }
+        path.push(idx);
+        Some((root, path))
+    }
+
     /// A member type of `decl` seen through a receiver of type `recv`: the type's
     /// parameters are replaced by the receiver's type arguments.
     pub(crate) fn instantiate_member(&mut self, decl: DeclId, recv: Ty, member: Ty) -> Ty {
@@ -349,6 +383,11 @@ impl Ctx<'_> {
 
     /// Checks that a resolved place may be written (see the module docs).
     pub(crate) fn check_writable(&mut self, p: &Place, span: Span) {
+        // Whatever was known about the root local (or its readonly properties) may
+        // no longer hold.
+        if let PlaceRoot::Local(id) = p.root {
+            self.forget_root(id);
+        }
         let level_ty = |i: usize| if i == 0 { p.root_ty } else { p.tys[i - 1] };
         // Projections from the last class reference on are writes through it.
         let boundary = (0..p.path.len())
@@ -372,8 +411,11 @@ impl Ctx<'_> {
             };
             let f = self.decls.ty(d).fields[idx as usize].clone();
             if f.readonly {
+                // Assign-once: only in the declaring type's constructor, and only when
+                // neither a default nor promotion already assigned it.
                 let in_own_ctor = i == 0
                     && root_is_this
+                    && !f.initialized
                     && self.frame().in_ctor
                     && self.frame().self_decl == Some(f.owner);
                 if !in_own_ctor {
@@ -445,9 +487,7 @@ impl Ctx<'_> {
                             .with_span(span),
                     );
                 }
-                if p.path.is_empty() {
-                    self.frame().facts.remove(&id);
-                }
+                self.forget_root(id);
             }
             PlaceRoot::Static(sid) => {
                 let s = self.decls.static_(*sid);
@@ -736,6 +776,15 @@ fn object_place(x: Expr) -> Place {
         ty,
         span,
     }
+}
+
+/// Whether an expression denotes storage (a variable, property, element or static
+/// property) rather than a computed value.
+pub(crate) fn is_place_expr(e: &ast::Expr) -> bool {
+    matches!(
+        strip_parens(e).kind,
+        A::Var(_) | A::Prop { .. } | A::Index { .. } | A::StaticProp { .. }
+    )
 }
 
 /// Whether a write target goes through `?->` anywhere.

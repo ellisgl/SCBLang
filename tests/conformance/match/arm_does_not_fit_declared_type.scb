@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+function main(): void
+{
+    $n: int = 1;
+    $s: string = match ($n) {
+        0 => "zero",
+        default => 5,
+    };
+}

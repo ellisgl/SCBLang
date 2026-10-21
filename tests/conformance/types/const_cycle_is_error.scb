@@ -1,0 +1,10 @@
+// EXPECT-COMPILE-ERROR: const-cycle
+
+namespace Conformance;
+
+const A: int = B + 1;
+const B: int = A + 1;
+
+function main(): void
+{
+}

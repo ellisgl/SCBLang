@@ -325,9 +325,11 @@ impl Decls {
         sub == sup || self.ancestors(sub).contains(&sup) || self.all_interfaces(sub).contains(&sup)
     }
 
+    /// A constant of `id`, its superclasses, or the interfaces it implements.
     pub fn find_const(&self, id: DeclId, name: &str) -> Option<ConstId> {
         self.ancestors(id)
             .into_iter()
+            .chain(self.all_interfaces(id))
             .find_map(|t| self.ty(t).consts.get(name).copied())
     }
 

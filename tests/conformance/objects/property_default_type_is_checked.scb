@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: type-mismatch
+
+namespace Conformance;
+
+class Config
+{
+    public $port: int = "8080";
+}
+
+function main(): void
+{
+}

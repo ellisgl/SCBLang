@@ -133,9 +133,10 @@ impl Ctx<'_> {
             TyKind::String => true,
             TyKind::Bytes => iface != Iface::Stringable,
             TyKind::Bool => matches!(iface, Iface::Equatable | Iface::Hashable),
-            TyKind::Null | TyKind::Void | TyKind::Fn(_) | TyKind::Param(_) | TyKind::SelfType => {
-                false
-            }
+            // `null == null`, and `?T` keys hash: `null` is Equatable and Hashable, so
+            // `?int` is too (and a struct with a `?T` field can be).
+            TyKind::Null => matches!(iface, Iface::Equatable | Iface::Hashable),
+            TyKind::Void | TyKind::Fn(_) | TyKind::Param(_) | TyKind::SelfType => false,
             TyKind::Union(ms) => ms.iter().all(|&m| self.conforms_inner(m, iface, visiting)),
             TyKind::List(e) => {
                 iface != Iface::Stringable && self.conforms_inner(e, iface, visiting)

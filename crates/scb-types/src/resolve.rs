@@ -311,6 +311,12 @@ impl Ctx<'_> {
             );
             return Some(Ty::ERROR);
         }
+        // Map keys and set elements must be `Hashable`; checked once every struct's
+        // fields are known (`check_bodies`), since derivation depends on them.
+        // Stub signatures (`map<K, V>` with `K` a parameter) are checked at use.
+        if matches!(short, "map" | "set") && !self.types.has_params(args[0]) {
+            self.pending_hashable.push((args[0], n.span));
+        }
         Some(match short {
             "list" => self.types.list(args[0]),
             "set" => self.types.set(args[0]),

@@ -613,9 +613,9 @@ impl Ctx<'_> {
             .map(|b| b.ty)
             .filter(|&t| t != Ty::NEVER && t != Ty::ERROR)
             .collect();
-        if let Some(t) = expect
-            && tys.iter().all(|&b| self.assignable(b, t))
-        {
+        // With an expected type, every branch must fit it; the caller converts each
+        // branch, which reports the ones that do not.
+        if let Some(t) = expect {
             return t;
         }
         let Some(&first) = tys.first() else {

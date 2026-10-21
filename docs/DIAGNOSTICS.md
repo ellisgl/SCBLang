@@ -112,4 +112,7 @@ A program can itself exit with 2, 64, 66 or 70; tools that need to tell the case
 | `unsatisfied-bound` | A type lacking a required capability: `==` on a non-`Equatable` type, `<` on a non-`Comparable` one, a non-`Hashable` map key, a conditional method (`join`, `sort`, …) whose `where` bound fails | Equality and comparison; Generics |
 | `visibility` | Access to a private or protected member from outside where it is visible | Structs, classes and interfaces |
 | `wrong-arguments` | Missing, extra, unknown, duplicate or misplaced arguments | Functions |
+| `const-cycle` | A constant whose initializer depends on itself | Mutability |
+| `invalid-member` | A property in an interface or enum; `__destruct` outside a class or with parameters | Structs, classes and interfaces |
+| `invalid-modifier` | `mutating` on a class, enum or static method | Structs, classes and interfaces |
 | `wrong-type-arguments` | Wrong number of type arguments (`list<int, int>`), or type arguments on a non-generic type | Type system |

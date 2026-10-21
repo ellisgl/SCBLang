@@ -107,12 +107,7 @@ impl Ctx<'_> {
         expect: Option<Ty>,
         span: Span,
     ) -> Expr {
-        let is_place_expr = !nullsafe
-            && matches!(
-                crate::check::ops::strip_parens(object).kind,
-                A::Var(_) | A::Prop { .. } | A::Index { .. } | A::StaticProp { .. }
-            );
-        let recv = if is_place_expr {
+        let recv = if !nullsafe && crate::check::place::is_place_expr(object) {
             match self.place(object, Access::Read) {
                 Some(p) => Recv::Place(p),
                 None => {
@@ -1360,11 +1355,28 @@ impl Ctx<'_> {
             }
         }
 
+        // Inferred type parameters must satisfy their bounds (`N of __Integer` in
+        // `Math\mod`); an unresolved one shows up in the result type below.
         for p in &callee.infer {
-            if !callee.subst.contains_key(p) {
-                // Unconstrained (e.g. an empty argument list): leave it to the caller's
-                // context; an unresolved parameter in the result is an error below.
-                let _ = p;
+            let (Some(&actual), Some(bound)) = (callee.subst.get(p), self.decls.param(*p).bound)
+            else {
+                continue;
+            };
+            if let Some(iface) = self.iface_of(bound)
+                && !self.conforms(actual, iface)
+            {
+                let shown = self.show(actual);
+                self.report(
+                    Diagnostic::new(
+                        "unsatisfied-bound",
+                        format!(
+                            "{} needs {}, and `{shown}` is not",
+                            callee.what,
+                            iface.name()
+                        ),
+                    )
+                    .with_span(span),
+                );
             }
         }
         let ret = self

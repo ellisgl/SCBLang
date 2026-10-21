@@ -22,8 +22,8 @@ use scb_syntax::ast::{self, ExprKind as A, PatternKind as P};
 use scb_syntax::{Diagnostic, Span};
 
 use crate::Ctx;
-use crate::check::Facts;
 use crate::check::rel::Iface;
+use crate::check::{FactKey, Facts};
 use crate::decls::{DeclId, TypeKind};
 use crate::tir::{self, Expr, ExprKind as T, Lit, LocalId, Pattern, PatternKind as TP};
 use crate::ty::{Ty, TyKind};
@@ -118,11 +118,9 @@ impl Ctx<'_> {
         } else {
             return Facts::default();
         };
-        let Some(id) = self.fact_local(other) else {
+        let Some((key, declared, current)) = self.fact_key(other) else {
             return Facts::default();
         };
-        let declared = self.frame().meta[id.0 as usize].declared;
-        let current = self.local_ty(id);
         let base = if self.types.is_nullable(current) {
             current
         } else {
@@ -130,24 +128,47 @@ impl Ctx<'_> {
         };
         let non_null = self.types.strip_null(base);
         let facts = Facts {
-            when_true: vec![(id, non_null)],
-            when_false: vec![(id, Ty::NULL)],
+            when_true: vec![(key.clone(), non_null)],
+            when_false: vec![(key, Ty::NULL)],
         };
         if not_eq { facts } else { facts.swap() }
     }
 
-    /// The local a condition operand talks about: `$x`, `($x = …)`.
-    fn fact_local(&mut self, e: &ast::Expr) -> Option<LocalId> {
+    /// What a condition operand talks about, with its declared and current types:
+    /// `$x`, `($x = …)`, or a chain of readonly properties from a local
+    /// (`$this->email`).
+    fn fact_key(&mut self, e: &ast::Expr) -> Option<(FactKey, Ty, Ty)> {
         match &e.kind {
             A::Var(name) => {
-                let id = self.lookup_local(name)?;
                 // Captured copies and `$this` can be narrowed too: they never change.
-                Some(id)
+                let id = self.lookup_local(name)?;
+                let declared = self.frame().meta[id.0 as usize].declared;
+                let current = self.local_ty(id);
+                Some(((id, Vec::new()), declared, current))
             }
-            A::Paren(x) => self.fact_local(x),
+            A::Paren(x) => self.fact_key(x),
             A::Assign {
                 op: None, target, ..
-            } => self.fact_local(target),
+            } => self.fact_key(target),
+            A::Prop {
+                object,
+                name,
+                nullsafe: false,
+            } => {
+                let ((root, mut path), _, object_ty) = self.fact_key(object)?;
+                let d = self.class_of(object_ty)?;
+                let idx = self.decls.field_index(d, &name.name)?;
+                let f = &self.decls.ty(d).fields[idx as usize];
+                if !f.readonly {
+                    return None;
+                }
+                let declared = f.ty;
+                let declared = self.instantiate_member(d, object_ty, declared);
+                path.push(idx);
+                let key = (root, path);
+                let current = self.frame().facts.get(&key).copied().unwrap_or(declared);
+                Some((key, declared, current))
+            }
             _ => None,
         }
     }
@@ -164,17 +185,16 @@ impl Ctx<'_> {
         let x = self.expr(subject, None);
         let (p, cover) = self.pattern(pattern, x.ty, Mode::InstanceOf, true);
         let mut facts = Facts::default();
-        if let Some(id) = self.fact_local(subject) {
-            let current = self.local_ty(id);
+        if let Some((key, _, current)) = self.fact_key(subject) {
             match cover {
                 Cover::Type(t) => {
-                    facts.when_true.push((id, t));
+                    facts.when_true.push((key.clone(), t));
                     if self.types.members(current).contains(&t) {
                         let rest = self.types.without(current, &[t]);
-                        facts.when_false.push((id, rest));
+                        facts.when_false.push((key, rest));
                     }
                 }
-                Cover::Null => facts.when_false.push((id, self.types.strip_null(current))),
+                Cover::Null => facts.when_false.push((key, self.types.strip_null(current))),
                 _ => {}
             }
         }
@@ -202,7 +222,11 @@ impl Ctx<'_> {
     pub(crate) fn match_expr(&mut self, m: &ast::Match, expect: Option<Ty>, is_stmt: bool) -> Expr {
         let subject = m.subject.as_ref().map(|s| self.expr(s, None));
         let subject_ty = subject.as_ref().map_or(Ty::BOOL, |s| s.ty);
-        let subject_local = m.subject.as_ref().and_then(|s| self.fact_local(s));
+        let subject_key = m
+            .subject
+            .as_ref()
+            .and_then(|s| self.fact_key(s))
+            .map(|(k, _, _)| k);
         let mut arms = Vec::new();
         let mut covers = Vec::new();
         let mut has_default = false;
@@ -227,8 +251,8 @@ impl Ctx<'_> {
                         arm_covers.push(c);
                     }
                     // A whole-type arm narrows the subject variable inside the arm.
-                    if let (Some(id), [Cover::Type(t)]) = (subject_local, arm_covers.as_slice()) {
-                        self.frame().facts.insert(id, *t);
+                    if let (Some(key), [Cover::Type(t)]) = (&subject_key, arm_covers.as_slice()) {
+                        self.frame().facts.insert(key.clone(), *t);
                     }
                 }
                 ast::ArmTest::Conditions(cs) => {

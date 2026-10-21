@@ -35,6 +35,8 @@ pub struct Func {
     /// Owning class, struct or enum for methods.
     pub owner: Option<DeclId>,
     pub params: Vec<Param>,
+    /// `$this` in instance methods (and closures that captured it).
+    pub this: Option<LocalId>,
     pub ret: Ty,
     /// Every local of the frame: `$this` first in instance methods, then parameters,
     /// then closure captures and declared locals in the order they appear.

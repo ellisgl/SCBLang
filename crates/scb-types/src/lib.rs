@@ -37,6 +37,13 @@ pub struct Program {
     pub consts: Vec<tir::Expr>,
     /// Initializer of each static property (evaluated lazily), indexed by `StaticId`.
     pub statics: Vec<tir::Expr>,
+    /// Default values of each type's own instance properties, indexed by `DeclId`:
+    /// evaluated for every new instance, superclass defaults first, before the
+    /// constructor runs.
+    pub field_defaults: Vec<Vec<(decls::FieldIdx, tir::Expr)>>,
+    /// The value of each case of a backed enum, indexed by `DeclId` then case
+    /// (`None` for other types and cases).
+    pub case_values: Vec<Vec<Option<tir::Expr>>>,
     /// The program's `main`.
     pub main: FuncId,
 }
@@ -58,6 +65,11 @@ pub(crate) struct Ctx<'a> {
     pub funcs: Vec<Option<tir::Func>>,
     pub consts: Vec<Option<tir::Expr>>,
     pub statics: Vec<Option<tir::Expr>>,
+    pub field_defaults: Vec<Vec<(decls::FieldIdx, tir::Expr)>>,
+    pub case_values: Vec<Vec<Option<tir::Expr>>>,
+    /// Declared `map` / `set` types, checked for `Hashable` keys once every type's
+    /// fields are known (`check_bodies`).
+    pub pending_hashable: Vec<(ty::Ty, scb_syntax::Span)>,
     pub diags: Vec<Diagnostic>,
     /// The bodies being checked: a function and the closures nested in it.
     pub frames: Vec<check::Frame>,
@@ -73,6 +85,9 @@ impl<'a> Ctx<'a> {
             funcs: Vec::new(),
             consts: Vec::new(),
             statics: Vec::new(),
+            field_defaults: Vec::new(),
+            case_values: Vec::new(),
+            pending_hashable: Vec::new(),
             diags: Vec::new(),
             frames: Vec::new(),
         }
@@ -174,6 +189,8 @@ fn compile(mut sources: SourceMap) -> CheckResult {
         funcs,
         consts,
         statics,
+        field_defaults,
+        case_values,
         diags,
         ..
     } = ctx;
@@ -197,6 +214,8 @@ fn compile(mut sources: SourceMap) -> CheckResult {
             .into_iter()
             .map(|s| s.expect("every static is checked"))
             .collect(),
+        field_defaults,
+        case_values,
         main,
     })
 }

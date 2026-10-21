@@ -1,0 +1,15 @@
+// EXPECT-COMPILE-ERROR: incompatible-override
+
+namespace Conformance;
+
+class Name implements Stringable
+{
+    public function toString(): int
+    {
+        return 1;
+    }
+}
+
+function main(): void
+{
+}

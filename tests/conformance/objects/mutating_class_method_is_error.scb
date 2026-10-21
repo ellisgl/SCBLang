@@ -1,0 +1,17 @@
+// EXPECT-COMPILE-ERROR: invalid-modifier
+
+namespace Conformance;
+
+class Counter
+{
+    public $n: int = 0;
+
+    public mutating function bump(): void
+    {
+        $this->n++;
+    }
+}
+
+function main(): void
+{
+}

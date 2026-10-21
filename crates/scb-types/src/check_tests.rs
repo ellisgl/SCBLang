@@ -1076,3 +1076,198 @@ fn data_enums_have_no_cases() {
         ["unknown-member"]
     );
 }
+
+// ---------- review regressions ----------
+
+#[test]
+fn match_and_ternary_arms_fit_the_expected_type() {
+    assert_eq!(
+        body("$n: int = 1; $s: string = match ($n) { 0 => 'a', default => 5 };"),
+        ["type-mismatch"]
+    );
+    assert_eq!(
+        body("$b: bool = true; $s: string = $b ? 'a' : 5;"),
+        ["type-mismatch"]
+    );
+}
+
+#[test]
+fn backed_enum_values() {
+    assert_eq!(
+        body_with("enum S: string { case A = 1; }", ""),
+        ["type-mismatch"]
+    );
+    assert_eq!(
+        body_with("enum S: string { case A = 'x'; case B = 'x'; }", ""),
+        ["duplicate-declaration"]
+    );
+    assert_eq!(
+        body_with("enum S: int { case A = 1; case B = -1; }", ""),
+        OK
+    );
+}
+
+#[test]
+fn property_defaults_are_checked() {
+    assert_eq!(
+        body_with("class C { public $x: int = 'a'; }", ""),
+        ["type-mismatch"]
+    );
+    assert_eq!(
+        body_with(
+            "function f(): int { return 1; }\nstruct P { public $x: int = f(); }",
+            ""
+        ),
+        ["non-constant-expression"]
+    );
+    assert_eq!(
+        body_with(
+            "class B { }\nclass C { public $b: B = new B(); public $n: ?int = null; }",
+            ""
+        ),
+        OK
+    );
+}
+
+#[test]
+fn members_only_where_they_belong() {
+    assert_eq!(
+        body_with("interface I { public $x: int; }", ""),
+        ["invalid-member"]
+    );
+    assert_eq!(
+        body_with("enum E { case A; public $x: int = 1; }", ""),
+        ["invalid-member"]
+    );
+    assert_eq!(
+        body_with("class C { public mutating function f(): void {} }", ""),
+        ["invalid-modifier"]
+    );
+    assert_eq!(
+        body_with(
+            "struct P { public static mutating function f(): void {} }",
+            ""
+        ),
+        ["invalid-modifier"]
+    );
+    assert_eq!(
+        body_with("struct P { public function __destruct() {} }", ""),
+        ["invalid-member"]
+    );
+}
+
+#[test]
+fn const_cycles() {
+    assert_eq!(
+        body_with("const A: int = B;\nconst B: int = A;", ""),
+        ["const-cycle"]
+    );
+    assert_eq!(
+        body_with("const A: int = B + 1;\nconst B: int = 2;", ""),
+        OK
+    );
+}
+
+#[test]
+fn bounds_on_inferred_type_parameters() {
+    assert_eq!(body("echo \\Math\\mod(1.5, 2.5);"), ["unsatisfied-bound"]);
+    assert_eq!(body("$m: map<f64, int> = [];"), ["unsatisfied-bound"]);
+    assert_eq!(body("$s: set<f64> = [];"), ["unsatisfied-bound"]);
+    assert_eq!(
+        body("$m: map<f64, int> = [1.5 => 1];"),
+        ["unsatisfied-bound"]
+    );
+}
+
+#[test]
+fn readonly_assigned_once() {
+    assert_eq!(
+        body_with(
+            "class U { public readonly $x: int = 5; public function __construct() { $this->x = 6; } }",
+            ""
+        ),
+        ["readonly-write"]
+    );
+}
+
+#[test]
+fn interface_implementations_match() {
+    assert_eq!(
+        body_with(
+            "class N implements Stringable { public function toString(): int { return 1; } }",
+            ""
+        ),
+        ["incompatible-override"]
+    );
+    assert_eq!(
+        body_with(
+            "class V implements Equatable { public function equals($other: V): bool { return true; } }",
+            ""
+        ),
+        OK
+    );
+    assert_eq!(
+        body_with(
+            "interface S { public function area(): f64; }\nclass Q implements S { public function area($scale: f64): f64 { return $scale; } }",
+            ""
+        ),
+        ["incompatible-override"]
+    );
+}
+
+#[test]
+fn readonly_properties_narrow() {
+    let decls = "class U { public function __construct(public readonly $email: ?string, public $nick: ?string) {} }";
+    assert_eq!(
+        body_with(
+            decls,
+            "$u: U = new U(null, null); if ($u->email != null) { $s: string = $u->email; }"
+        ),
+        OK
+    );
+    assert_eq!(
+        body_with(
+            decls,
+            "$u: U = new U(null, null); if ($u->nick != null) { $s: string = $u->nick; }"
+        ),
+        ["type-mismatch"]
+    );
+    assert_eq!(
+        body_with(
+            decls,
+            "$u: U = new U(null, null); if ($u->email != null) { $u = new U(null, null); $s: string = $u->email; }"
+        ),
+        ["type-mismatch"]
+    );
+}
+
+#[test]
+fn duplicate_use_aliases() {
+    assert_eq!(
+        file("namespace T;\nuse Math\\Rounding;\nuse Math\\Rounding;\nfunction main(): void {}"),
+        ["duplicate-declaration"]
+    );
+}
+
+#[test]
+fn interface_constants_are_inherited() {
+    assert_eq!(
+        body_with(
+            "interface I { public const X: int = 1; }\nclass C implements I { }",
+            "echo C::X, I::X;"
+        ),
+        OK
+    );
+}
+
+#[test]
+fn structs_with_nullable_fields_are_equatable() {
+    assert_eq!(
+        body_with(
+            "struct N { public $next: ?N = null; }",
+            "$n: N = new N(); $eq: bool = $n == new N();"
+        ),
+        OK
+    );
+    assert_eq!(body("$a: ?int = 1; $m: map<?int, string> = [];"), OK);
+}

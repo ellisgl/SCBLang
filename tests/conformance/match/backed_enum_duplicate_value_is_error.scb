@@ -1,0 +1,13 @@
+// EXPECT-COMPILE-ERROR: duplicate-declaration
+
+namespace Conformance;
+
+enum Status: string
+{
+    case ACTIVE = "a";
+    case ARCHIVED = "a";
+}
+
+function main(): void
+{
+}

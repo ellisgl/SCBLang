@@ -80,7 +80,7 @@ pub(crate) struct Frame {
     pub locals: Vec<tir::Local>,
     pub meta: Vec<LocalMeta>,
     pub scopes: Vec<Scope>,
-    pub facts: HashMap<LocalId, Ty>,
+    pub facts: HashMap<FactKey, Ty>,
     pub ret: Ty,
     /// The type whose method this is (also inside its closures).
     pub self_decl: Option<DeclId>,
@@ -101,11 +101,16 @@ pub(crate) struct Frame {
     pub nullsafe: Vec<(LocalId, tir::Expr)>,
 }
 
+/// What a flow fact is about: a local, or a chain of `readonly` properties reached
+/// from one (`$this->email`; SPEC "Type system": flow typing applies to locals and
+/// readonly properties). The path is empty for the local itself.
+pub(crate) type FactKey = (LocalId, Vec<crate::decls::FieldIdx>);
+
 /// Facts for the two outcomes of a condition.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Facts {
-    pub when_true: Vec<(LocalId, Ty)>,
-    pub when_false: Vec<(LocalId, Ty)>,
+    pub when_true: Vec<(FactKey, Ty)>,
+    pub when_false: Vec<(FactKey, Ty)>,
 }
 
 impl Facts {
@@ -210,10 +215,10 @@ impl Ctx<'_> {
     /// Closes the innermost scope, returning the locals declared in it.
     pub(crate) fn pop_scope(&mut self) -> Vec<LocalId> {
         let scope = self.frame().scopes.pop().expect("a scope is open");
-        let f = self.frame();
-        for id in &scope.declared {
-            f.facts.remove(id);
-        }
+        let declared = &scope.declared;
+        self.frame()
+            .facts
+            .retain(|(root, _), _| !declared.contains(root));
         scope.declared
     }
 
@@ -241,7 +246,7 @@ impl Ctx<'_> {
         let outer_frame = &self.frames[depth - 1];
         let ty = outer_frame
             .facts
-            .get(&outer)
+            .get(&(outer, Vec::new()))
             .copied()
             .unwrap_or(outer_frame.locals[outer.0 as usize].ty);
         let mut meta = outer_frame.meta[outer.0 as usize].clone();
@@ -263,27 +268,33 @@ impl Ctx<'_> {
     pub(crate) fn local_ty(&mut self, id: LocalId) -> Ty {
         let f = self.frame();
         f.facts
-            .get(&id)
+            .get(&(id, Vec::new()))
             .copied()
             .unwrap_or(f.locals[id.0 as usize].ty)
     }
 
-    pub(crate) fn apply_facts(&mut self, facts: &[(LocalId, Ty)]) {
-        for &(id, ty) in facts {
-            self.frame().facts.insert(id, ty);
+    pub(crate) fn apply_facts(&mut self, facts: &[(FactKey, Ty)]) {
+        for (key, ty) in facts {
+            self.frame().facts.insert(key.clone(), *ty);
         }
     }
 
-    pub(crate) fn facts_snapshot(&mut self) -> HashMap<LocalId, Ty> {
+    /// Drops every fact about a local and the properties reached from it (after a
+    /// write through it).
+    pub(crate) fn forget_root(&mut self, id: LocalId) {
+        self.frame().facts.retain(|(root, _), _| *root != id);
+    }
+
+    pub(crate) fn facts_snapshot(&mut self) -> HashMap<FactKey, Ty> {
         self.frame().facts.clone()
     }
 
-    pub(crate) fn restore_facts(&mut self, facts: HashMap<LocalId, Ty>) {
+    pub(crate) fn restore_facts(&mut self, facts: HashMap<FactKey, Ty>) {
         self.frame().facts = facts;
     }
 
     /// Facts that hold after alternative paths: those equal in every completing path.
-    pub(crate) fn join_facts(&mut self, outs: Vec<HashMap<LocalId, Ty>>) {
+    pub(crate) fn join_facts(&mut self, outs: Vec<HashMap<FactKey, Ty>>) {
         let mut iter = outs.into_iter();
         let Some(mut acc) = iter.next() else { return };
         for other in iter {
@@ -294,9 +305,21 @@ impl Ctx<'_> {
 
     /// Drops facts about locals that `names` assigns (before a loop).
     pub(crate) fn forget_assigned(&mut self, names: &[String]) {
-        let ids: Vec<LocalId> = names.iter().filter_map(|n| self.lookup_local(n)).collect();
+        // Only locals of this frame: facts never refer to another frame's slots, and a
+        // capturing lookup would add needless captures to a closure.
+        let ids: Vec<LocalId> = names
+            .iter()
+            .filter_map(|n| {
+                self.frames
+                    .last()?
+                    .scopes
+                    .iter()
+                    .rev()
+                    .find_map(|s| s.names.get(n).copied())
+            })
+            .collect();
         for id in ids {
-            self.frame().facts.remove(&id);
+            self.forget_root(id);
         }
     }
 
@@ -318,7 +341,142 @@ impl Ctx<'_> {
         for i in 0..self.decls.statics.len() {
             self.check_static(StaticId(i as u32));
         }
+        self.field_defaults = (0..self.decls.types.len()).map(|_| Vec::new()).collect();
+        self.case_values = (0..self.decls.types.len()).map(|_| Vec::new()).collect();
+        for i in 0..self.decls.types.len() {
+            self.check_type_initializers(DeclId(i as u32));
+        }
+        self.check_const_cycles();
+        let pending = std::mem::take(&mut self.pending_hashable);
+        for (ty, span) in pending {
+            self.require_hashable(ty, span);
+        }
         self.find_main()
+    }
+
+    /// Property defaults and backed-enum case values of one type.
+    fn check_type_initializers(&mut self, id: DeclId) {
+        let at = self.decls.ty(id).ast;
+        let file = at.file as usize;
+        let files = self.files;
+        let (members, cases): (&[ast::Member], &[ast::EnumCase]) =
+            match &files[file].ast.decls[at.decl as usize] {
+                ast::Decl::Class(c) => (&c.members, &[]),
+                ast::Decl::Struct(s) => (&s.members, &[]),
+                ast::Decl::Enum(e) => (&e.members, &e.cases),
+                _ => return,
+            };
+        let mut frame = self.new_frame(file, FrameKind::Initializer, "default".into(), Ty::VOID);
+        frame.self_decl = Some(id);
+        self.frames.push(frame);
+
+        // SPEC "Functions": defaults are constant expressions, plus `new`.
+        let mut defaults = Vec::new();
+        for m in members {
+            let ast::Member::Property(p) = m else {
+                continue;
+            };
+            if p.is_static {
+                continue;
+            }
+            let Some(d) = &p.default else { continue };
+            let Some(idx) = self.decls.field_index(id, &p.name.name) else {
+                continue;
+            };
+            let ty = self.decls.ty(id).fields[idx as usize].ty;
+            let e = self.expr_as(d, ty);
+            self.require_constant(d, true);
+            defaults.push((idx, e));
+        }
+        self.field_defaults[id.0 as usize] = defaults;
+
+        // Backed enum values: constants of the backing type, all different.
+        let backing = self.decls.ty(id).backing;
+        let mut values: Vec<Option<tir::Expr>> = Vec::new();
+        let mut seen: Vec<(tir::Lit, Span)> = Vec::new();
+        for c in cases {
+            let value = match (&c.body, backing) {
+                (ast::CaseBody::Value(v), Some(b)) => {
+                    let e = self.expr_as(v, b);
+                    self.require_constant(v, false);
+                    if let tir::ExprKind::Lit(lit) = &e.kind {
+                        if let Some((_, first)) = seen.iter().find(|(l, _)| l == lit) {
+                            let line = self.sources.file(first.file).line_col(first.start).0;
+                            self.report(
+                                Diagnostic::new(
+                                    "duplicate-declaration",
+                                    format!(
+                                        "case `{}` repeats the value of the case on line {line}",
+                                        c.name.name
+                                    ),
+                                )
+                                .with_span(v.span)
+                                .with_note("`from()` must map each value to one case"),
+                            );
+                        } else {
+                            seen.push((lit.clone(), v.span));
+                        }
+                    }
+                    Some(e)
+                }
+                _ => None,
+            };
+            values.push(value);
+        }
+        self.case_values[id.0 as usize] = values;
+        self.frames.pop();
+    }
+
+    /// A constant whose initializer depends on itself would never finish evaluating.
+    fn check_const_cycles(&mut self) {
+        let n = self.consts.len();
+        let deps: Vec<Vec<usize>> = self
+            .consts
+            .iter()
+            .map(|c| {
+                let mut out = Vec::new();
+                if let Some(e) = c {
+                    const_refs(e, &mut out);
+                }
+                out
+            })
+            .collect();
+        // 0 = unvisited, 1 = on the current path, 2 = done.
+        let mut state = vec![0u8; n];
+        for start in 0..n {
+            if state[start] != 0 {
+                continue;
+            }
+            let mut stack = vec![(start, 0usize)];
+            state[start] = 1;
+            while let Some(&mut (node, ref mut next)) = stack.last_mut() {
+                if let Some(&dep) = deps[node].get(*next) {
+                    *next += 1;
+                    match state[dep] {
+                        0 => {
+                            state[dep] = 1;
+                            stack.push((dep, 0));
+                        }
+                        1 => {
+                            let c = self.decls.konst(crate::decls::ConstId(dep as u32));
+                            let (name, span) = (c.name.clone(), c.span);
+                            self.report(
+                                Diagnostic::new(
+                                    "const-cycle",
+                                    format!("constant `{name}` depends on itself"),
+                                )
+                                .with_span(span),
+                            );
+                            state[dep] = 2;
+                        }
+                        _ => {}
+                    }
+                } else {
+                    state[node] = 2;
+                    stack.pop();
+                }
+            }
+        }
     }
 
     fn check_function(&mut self, id: FnId) {
@@ -596,6 +754,48 @@ impl Ctx<'_> {
     }
 }
 
+/// Constants referenced by a constant initializer (which only contains literals,
+/// constants, operators and collection literals).
+fn const_refs(e: &tir::Expr, out: &mut Vec<usize>) {
+    use tir::ExprKind as K;
+    match &e.kind {
+        K::Const(c) => out.push(c.0 as usize),
+        K::Unary { expr, .. } | K::Cast(expr) | K::Upcast(expr) | K::ToString(expr) => {
+            const_refs(expr, out)
+        }
+        K::Binary { lhs, rhs, .. } | K::Logic { lhs, rhs, .. } | K::Coalesce { lhs, rhs } => {
+            const_refs(lhs, out);
+            const_refs(rhs, out);
+        }
+        K::Range { start, end, .. } => {
+            const_refs(start, out);
+            const_refs(end, out);
+        }
+        K::Ternary {
+            cond,
+            then,
+            otherwise,
+        } => {
+            const_refs(cond, out);
+            const_refs(then, out);
+            const_refs(otherwise, out);
+        }
+        K::List(xs) | K::Set(xs) | K::Tuple(xs) | K::Interpolate(xs) => {
+            xs.iter().for_each(|x| const_refs(x, out))
+        }
+        K::Map(kvs) => kvs.iter().for_each(|(k, v)| {
+            const_refs(k, out);
+            const_refs(v, out);
+        }),
+        K::EnumCase { args, .. } | K::New { args, .. } => args.iter().for_each(|a| {
+            if let tir::ArgValue::Value(x) | tir::ArgValue::Spread(x) = &a.value {
+                const_refs(x, out);
+            }
+        }),
+        _ => {}
+    }
+}
+
 /// The AST of a class member.
 pub(crate) fn member_ast(
     files: &[crate::resolve::ParsedFile],
@@ -627,10 +827,16 @@ pub(crate) fn finish(
     body: Body,
     span: Span,
 ) -> tir::Func {
+    let this = frame
+        .meta
+        .iter()
+        .position(|m| m.is_this)
+        .map(|i| LocalId(i as u32));
     tir::Func {
         name: frame.name,
         owner,
         params,
+        this,
         ret: frame.ret,
         locals: frame.locals,
         body,

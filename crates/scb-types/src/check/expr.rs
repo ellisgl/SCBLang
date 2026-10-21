@@ -664,7 +664,7 @@ impl Ctx<'_> {
                 .iter()
                 .map(|(ke, ve)| (self.expr_as(ke, k), self.expr_as(ve, v)))
                 .collect();
-            self.require_hashable(k, span);
+            // The declared type's key was checked where the type was written.
             return Expr {
                 kind: T::Map(xs),
                 ty,

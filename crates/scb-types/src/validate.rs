@@ -84,6 +84,37 @@ impl Ctx<'_> {
                     );
                 }
             }
+            if name == "__destruct" {
+                let m = self.decls.method(mid);
+                if kind != TypeKind::Class || !m.sig.params.is_empty() || m.is_static {
+                    self.report(
+                        Diagnostic::new(
+                            "invalid-member",
+                            "`__destruct` is an instance method of a class, without parameters",
+                        )
+                        .with_span(span)
+                        .with_note("structs and enums are values: they have no destructor"),
+                    );
+                }
+            }
+            // `mutating` marks struct methods that change `$this` (interfaces may
+            // require it); a class method or a static method has no `$this` value to
+            // change.
+            let m = self.decls.method(mid);
+            if m.mutating && (m.is_static || matches!(kind, TypeKind::Class | TypeKind::Enum)) {
+                let why = if m.is_static {
+                    "a static method has no `$this`"
+                } else if kind == TypeKind::Class {
+                    "class methods change their object through the reference, without a marker"
+                } else {
+                    "enum values cannot change"
+                };
+                self.report(
+                    Diagnostic::new("invalid-modifier", format!("`mutating` on `{name}`: {why}"))
+                        .with_span(span)
+                        .with_fix("remove `mutating`"),
+                );
+            }
             if mkind == MethodKind::Abstract {
                 if kind != TypeKind::Class || !is_abstract {
                     self.report(
@@ -141,17 +172,29 @@ impl Ctx<'_> {
     /// Same parameter types and modes; the overriding return type is assignable to
     /// the overridden one.
     fn same_signature(&mut self, m: MethodId, base: MethodId) -> bool {
-        let (a, b) = (&self.decls.method(m).sig, &self.decls.method(base).sig);
+        let owner = self.decls.method(m).owner;
+        let self_ty = self.self_type(owner);
+        self.compatible(m, base, self_ty)
+    }
+
+    /// Whether `m` can stand in for `base`: same parameter types and modes, and a
+    /// return type assignable to the base's. `self` in the base (the stdlib operator
+    /// interfaces) means `self_ty`.
+    fn compatible(&mut self, m: MethodId, base: MethodId, self_ty: crate::ty::Ty) -> bool {
+        let a = self.decls.method(m).sig.clone();
+        let b = self.decls.method(base).sig.clone();
         if a.params.len() != b.params.len() {
             return false;
         }
-        let params_ok = a
-            .params
-            .iter()
-            .zip(&b.params)
-            .all(|(x, y)| x.ty == y.ty && x.inout == y.inout && x.variadic == y.variadic);
-        let (ra, rb) = (a.ret, b.ret);
-        params_ok && self.assignable(ra, rb)
+        let none = std::collections::HashMap::new();
+        for (x, y) in a.params.iter().zip(&b.params) {
+            let yt = self.types.substitute(y.ty, &none, Some(self_ty));
+            if x.ty != yt || x.inout != y.inout || x.variadic != y.variadic {
+                return false;
+            }
+        }
+        let rb = self.types.substitute(b.ret, &none, Some(self_ty));
+        self.assignable(a.ret, rb)
     }
 
     /// Concrete classes, structs and enums provide every abstract method; interface
@@ -200,6 +243,43 @@ impl Ctx<'_> {
                 );
             }
         }
+        // Implementations must match the interface's signatures.
+        let self_ty = self.self_type(id);
+        for i in self.decls.all_interfaces(id) {
+            if self.builtin_conformance(id, i) {
+                continue;
+            }
+            let mut names: Vec<(String, MethodId)> = self
+                .decls
+                .ty(i)
+                .methods
+                .iter()
+                .map(|(n, &m)| (n.clone(), m))
+                .collect();
+            names.sort_by_key(|(_, m)| m.0);
+            for (name, base) in names {
+                let implementation = self
+                    .decls
+                    .ancestors(id)
+                    .into_iter()
+                    .find_map(|t| self.decls.ty(t).methods.get(&name).copied());
+                let Some(m) = implementation else { continue };
+                if !self.compatible(m, base, self_ty) {
+                    let (iname, mspan) = (self.short_name(i), self.decls.method(m).span);
+                    self.report(
+                        Diagnostic::new(
+                            "incompatible-override",
+                            format!("`{name}` does not match its declaration in `{iname}`"),
+                        )
+                        .with_span(mspan)
+                        .with_note(
+                            "parameters must have the same types; the return type may be narrower",
+                        ),
+                    );
+                }
+            }
+        }
+
         // Two interface defaults for the same name, not overridden by the class.
         let mut names: Vec<String> = self
             .decls

@@ -1,0 +1,12 @@
+// EXPECT-COMPILE-ERROR: invalid-member
+
+namespace Conformance;
+
+interface Named
+{
+    public $name: string;
+}
+
+function main(): void
+{
+}

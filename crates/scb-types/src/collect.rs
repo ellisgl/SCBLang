@@ -116,6 +116,30 @@ impl Ctx<'_> {
         }
 
         for (fi, f) in files.iter().enumerate() {
+            // Each alias names one import per kind (`use A\X; use B\X;` is ambiguous).
+            let mut aliases: Vec<(ast::UseKind, String)> = Vec::new();
+            for u in &f.ast.uses {
+                let alias = u.alias.as_ref().map_or_else(
+                    || {
+                        u.name
+                            .parts
+                            .last()
+                            .map_or(String::new(), |p| p.name.to_string())
+                    },
+                    |a| a.name.to_string(),
+                );
+                if aliases.contains(&(u.kind, alias.clone())) {
+                    self.report(
+                        Diagnostic::new(
+                            "duplicate-declaration",
+                            format!("`{alias}` is imported twice"),
+                        )
+                        .with_span(u.span)
+                        .with_fix("import one of them under another name with `as`"),
+                    );
+                }
+                aliases.push((u.kind, alias));
+            }
             if !f.stdlib {
                 let root = f.namespace.split('\\').next().unwrap_or("");
                 if RESERVED_ROOTS.contains(&root) {
@@ -278,22 +302,18 @@ impl Ctx<'_> {
             let at = self.decls.ty(id).ast;
             let file = at.file as usize;
             let d = &files[file].ast.decls[at.decl as usize];
-            let (tps, extends, implements): (
-                &[ast::TypeParam],
-                Vec<&ast::NamedType>,
-                &[ast::NamedType],
-            ) = match d {
-                Decl::Class(c) => (&c.type_params, c.extends.iter().collect(), &c.implements),
-                Decl::Struct(s) => (&s.type_params, Vec::new(), &s.implements),
-                Decl::Interface(i) => (&i.type_params, Vec::new(), &i.extends),
-                Decl::Enum(e) => (&e.type_params, Vec::new(), &e.implements),
+            let tps: &[ast::TypeParam] = match d {
+                Decl::Class(c) => &c.type_params,
+                Decl::Struct(s) => &s.type_params,
+                Decl::Interface(i) => &i.type_params,
+                Decl::Enum(e) => &e.type_params,
                 _ => unreachable!("only types are in the type table"),
             };
             let base = TyScope {
                 params: Vec::new(),
                 self_decl: Some(id),
             };
-            let (params, scope) = self.type_params(file, tps, &base);
+            let (params, _) = self.type_params(file, tps, &base);
             let decl = self.decls.ty_mut(id);
             decl.type_params = params;
             if let Decl::Class(c) = d {
@@ -304,6 +324,32 @@ impl Ctx<'_> {
             if let Decl::Struct(s) = d {
                 decl.readonly = s.readonly;
             }
+        }
+        // Built-in names must resolve to their types (not their stub classes) before
+        // any parent or interface type is resolved.
+        self.mark_builtins();
+        for idx in 0..self.decls.types.len() {
+            let id = DeclId(idx as u32);
+            let at = self.decls.ty(id).ast;
+            let file = at.file as usize;
+            let (extends, implements): (Vec<&ast::NamedType>, &[ast::NamedType]) =
+                match &files[file].ast.decls[at.decl as usize] {
+                    Decl::Class(c) => (c.extends.iter().collect(), &c.implements),
+                    Decl::Struct(s) => (Vec::new(), &s.implements),
+                    Decl::Interface(i) => (Vec::new(), &i.extends),
+                    Decl::Enum(e) => (Vec::new(), &e.implements),
+                    _ => unreachable!("only types are in the type table"),
+                };
+            let scope = TyScope {
+                params: self
+                    .decls
+                    .ty(id)
+                    .type_params
+                    .iter()
+                    .map(|&p| (self.decls.param(p).name.clone(), p))
+                    .collect(),
+                self_decl: Some(id),
+            };
             for e in extends {
                 let ty = self.resolve_named_type(file, e, &scope);
                 match self.class_of(ty) {
@@ -334,7 +380,6 @@ impl Ctx<'_> {
                 }
             }
         }
-        self.mark_builtins();
         self.check_hierarchy();
     }
 
@@ -603,6 +648,29 @@ impl Ctx<'_> {
             };
             match m {
                 Member::Property(p) => {
+                    let kind = self.decls.ty(id).kind;
+                    if matches!(kind, TypeKind::Interface | TypeKind::Enum) {
+                        let what = if kind == TypeKind::Interface {
+                            "interfaces"
+                        } else {
+                            "enums"
+                        };
+                        self.report(
+                            Diagnostic::new(
+                                "invalid-member",
+                                format!("{what} cannot declare properties"),
+                            )
+                            .with_span(p.name.span)
+                            .with_note(
+                                if kind == TypeKind::Interface {
+                                    "interfaces describe behavior; default methods have no state"
+                                } else {
+                                    "enum values are their cases; use a constant or a method"
+                                },
+                            ),
+                        );
+                        continue;
+                    }
                     let ty = self.resolve_type(file, &p.ty, &scope);
                     if p.is_static {
                         let sid = StaticId(self.decls.statics.len() as u32);
