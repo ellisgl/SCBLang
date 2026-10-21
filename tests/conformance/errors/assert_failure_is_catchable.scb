@@ -1,0 +1,22 @@
+// EXPECT-STDOUT:
+// | AssertionError: total must be positive
+// | AssertionError: assertion failed
+// | ok
+namespace Conformance;
+
+function main(): void
+{
+    $total: int = -1;
+    try {
+        assert($total > 0, 'total must be positive');
+    } catch ($e: \AssertionError) {
+        echo 'AssertionError: ', $e->getMessage(), "\n";
+    }
+    try {
+        assert(false);
+    } catch ($e: \Error) {
+        echo 'AssertionError: ', $e->getMessage(), "\n";
+    }
+    assert(true);
+    echo "ok\n";
+}

@@ -1,0 +1,21 @@
+// EXPECT-STDOUT:
+// EXPECT-STDERR-CONTAINS: Fatal error
+// EXPECT-STDERR-CONTAINS: stack overflow
+// EXPECT-EXIT: 1
+namespace Conformance;
+
+function down($n: int): int
+{
+    return down($n + 1);
+}
+
+function main(): void
+{
+    try {
+        echo down(0);
+    } catch ($e: \Throwable) {
+        echo "caught: must not happen\n";
+    } finally {
+        echo "finally: must not happen\n";
+    }
+}

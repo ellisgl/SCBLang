@@ -1,0 +1,8 @@
+// EXPECT-RUNTIME-ERROR: AssertionError
+// EXPECT-STDERR-CONTAINS: count mismatch
+namespace Conformance;
+
+function main(): void
+{
+    assert(1 + 1 == 3, 'count mismatch');
+}

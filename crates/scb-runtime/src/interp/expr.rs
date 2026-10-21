@@ -227,7 +227,7 @@ impl Interp<'_> {
                 }
                 Value::str(s)
             }
-            K::Throw(x) => return Err(Flow::Throw(self.eval(x)?)),
+            K::Throw(x) => return Err(Flow::Throw(self.eval(x)?, span)),
             K::Exit(code) => {
                 let code = match code {
                     Some(c) => self.eval(c)?.as_i64(),

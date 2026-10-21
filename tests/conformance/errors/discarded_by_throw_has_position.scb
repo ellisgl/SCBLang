@@ -1,0 +1,13 @@
+// EXPECT-RUNTIME-ERROR: Exception
+// EXPECT-STDERR-CONTAINS: discarded by throw at
+// EXPECT-STDERR-CONTAINS: discarded_by_throw_has_position.scb:11
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        throw new \Exception('first');
+    } finally {
+        throw new \Exception('second');
+    }
+}

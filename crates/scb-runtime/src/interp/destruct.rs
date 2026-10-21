@@ -89,7 +89,7 @@ impl Interp<'_> {
             self.iso.destruct_floor = floor;
             match r {
                 Ok(_) | Err(Flow::Return(_) | Flow::Break(_) | Flow::Continue(_)) => {}
-                Err(Flow::Throw(e)) => {
+                Err(Flow::Throw(e, _)) => {
                     let name = &self.program.funcs[func.0 as usize].name;
                     let trace = self.describe_throwable(&e, "Uncaught");
                     return Err(Flow::Fatal(format!(

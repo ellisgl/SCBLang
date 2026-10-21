@@ -1,0 +1,27 @@
+// EXPECT-STDOUT:
+// | caught KeyError
+// | caught ParseException
+// | caught by Throwable: x
+namespace Conformance;
+
+function fail($which: int): void
+{
+    match ($which) {
+        0 => throw new \KeyError('k'),
+        1 => throw new \ParseException('p'),
+        default => throw new \Exception('x'),
+    };
+}
+
+function main(): void
+{
+    foreach ([0, 1, 2] as $i) {
+        try {
+            fail($i);
+        } catch ($e: \KeyError | \ParseException) {
+            echo 'caught ', $e instanceof \KeyError ? 'KeyError' : 'ParseException', "\n";
+        } catch ($e: \Throwable) {
+            echo 'caught by Throwable: ', $e->getMessage(), "\n";
+        }
+    }
+}

@@ -224,7 +224,7 @@ impl Interp<'_> {
         if matches!(result, Err(Flow::Abort | Flow::Fatal(_))) {
             return result;
         }
-        if let Err(Flow::Throw(e)) = &result {
+        if let Err(Flow::Throw(e, _)) = &result {
             let e = e.clone();
             let decl = e.decl();
             let program = self.program;
@@ -250,10 +250,9 @@ impl Interp<'_> {
             Ok(()) => result,
             Err(new) => {
                 match (&result, &new) {
-                    (Err(Flow::Throw(old)), _) => {
-                        // SPEC "Errors": marked "discarded by throw / exit(n)".
-                        // M6: "at file:line" for a replacing `throw` (an `exit`
-                        // carries its position already).
+                    (Err(Flow::Throw(old, _)), _) => {
+                        // SPEC "Errors": marked "discarded by throw / exit(n) at
+                        // file:line".
                         let by = self.replaced_by(&new);
                         let text = format!(
                             "{}  discarded by {by}\n",
@@ -261,11 +260,11 @@ impl Interp<'_> {
                         );
                         let _ = self.iso.flush_stdout();
                         let _ = self.iso.write_stderr(text.as_bytes());
-                        if let Flow::Throw(n) = &new {
+                        if let Flow::Throw(n, _) = &new {
                             set_previous_if_absent(n, old.clone());
                         }
                     }
-                    (Err(Flow::Exit(old, at)), Flow::Exit(..) | Flow::Throw(_)) => {
+                    (Err(Flow::Exit(old, at)), Flow::Exit(..) | Flow::Throw(..)) => {
                         // SPEC: the newest wins; the replaced exit is reported.
                         let by = self.replaced_by(&new);
                         let (file, line) = self.position(*at);
@@ -286,7 +285,10 @@ impl Interp<'_> {
                 let (file, line) = self.position(*at);
                 format!("exit({c}) at {file}:{line}")
             }
-            Flow::Throw(_) => "throw".into(),
+            Flow::Throw(_, at) => {
+                let (file, line) = self.position(*at);
+                format!("throw at {file}:{line}")
+            }
             _ => "control flow".into(),
         }
     }

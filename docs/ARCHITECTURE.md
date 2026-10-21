@@ -58,7 +58,7 @@ All interpreter state lives in an `Isolate`. Nothing is global; this is CLAUDE.m
 **Values** (`value.rs`): primitives are stored inline (`I8(i8)` … `F64(f64)`, `Bool`). Strings, bytes, lists, maps, sets, tuples, structs and enums with payloads sit behind an `Rc` and are copy-on-write through `Rc::make_mut`: a write copies only a shared level. Class instances are `Rc<RefCell<…>>`.
 
 **Interpreter** (`interp/`): a tree-walking evaluator over the TIR.
-- *Errors.* Every evaluation returns `Result<_, Flow>`, where `Flow` is a thrown value, `exit`, `return`, `break`/`continue`, a fatal error or `abort`.
+- *Errors.* Every evaluation returns `Result<_, Flow>`, where `Flow` is a thrown value, `exit`, `return`, `break`/`continue`, a fatal error or `abort`. A throw and an `exit` carry the position they came from; the spec's "discarded by …" and "superseded by …" reports use it.
 - *Writes* (`interp/place.rs`). A write evaluates the place's path first, then the right side, then walks the path making each value level unique.
 - *Moves.* `inout` arguments and `mutating` receivers move their value into the callee's frame and back out (also after a throw), so the callee mutates an unshared value in place. A loop of `push` is therefore O(n) (`scb-stdlib/tests/run.rs` guards this).
 - *Integers.* Integer operations compute in `i128` and trap on overflow.

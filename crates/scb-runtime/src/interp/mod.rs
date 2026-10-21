@@ -53,8 +53,9 @@ use place::EPlace;
 /// Why evaluation stopped early.
 #[derive(Debug)]
 pub enum Flow {
-    /// A thrown throwable (an `Object`).
-    Throw(Value),
+    /// A thrown throwable (an `Object`) and where it was thrown (the `throw`, or
+    /// the operation that trapped).
+    Throw(Value, Span),
     /// `exit(code)` / `Process\exit` and where it was called: unwinds, runs
     /// `finally` blocks, not catchable.
     Exit(i32, Span),
@@ -482,7 +483,7 @@ impl<'a> Interp<'a> {
             .decls
             .type_named(class)
             .expect("throwable classes are in the prelude");
-        Flow::Throw(self.new_throwable(decl, message.into(), span))
+        Flow::Throw(self.new_throwable(decl, message.into(), span), span)
     }
 
     pub(crate) fn new_throwable(&mut self, decl: DeclId, message: String, span: Span) -> Value {
@@ -564,7 +565,7 @@ impl<'a> Interp<'a> {
         // follow, on every end but `abort` and fatal errors. After an uncaught
         // throwable they follow its trace (in `finish`).
         let result = match result {
-            Err(Flow::Abort | Flow::Fatal(_) | Flow::Throw(_)) => result,
+            Err(Flow::Abort | Flow::Fatal(_) | Flow::Throw(..)) => result,
             _ => match self.run_destructors().and_then(|()| self.release_statics()) {
                 Ok(()) => result,
                 Err(fatal) => Err(fatal),
@@ -596,7 +597,7 @@ impl<'a> Interp<'a> {
             Ok(Value::I64(code)) => code as i32,
             Ok(_) => 0,
             Err(Flow::Exit(code, _)) => code,
-            Err(Flow::Throw(e)) => {
+            Err(Flow::Throw(e, _)) => {
                 let text = self.describe_throwable(&e, "Uncaught");
                 let _ = self.iso.write_stderr(text.as_bytes());
                 drop(e);

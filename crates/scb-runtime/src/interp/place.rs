@@ -289,11 +289,11 @@ impl Interp<'_> {
                 let original = original.clone();
                 let name = &self.program.decls.static_(sid).name;
                 let msg = format!("static `${name}` failed to initialize earlier");
-                let Flow::Throw(e) = self.error("StaticInitError", msg, span) else {
+                let Flow::Throw(e, at) = self.error("StaticInitError", msg, span) else {
                     unreachable!("error() throws")
                 };
                 super::stmt::set_previous(&e, original);
-                Err(Flow::Throw(e))
+                Err(Flow::Throw(e, at))
             }
             StaticSlot::Destroyed => {
                 let name = &self.program.decls.static_(sid).name;
@@ -309,9 +309,9 @@ impl Interp<'_> {
                         self.iso.static_order.push(sid);
                         Ok(())
                     }
-                    Err(Flow::Throw(e)) => {
+                    Err(Flow::Throw(e, at)) => {
                         self.iso.statics[sid.0 as usize] = StaticSlot::Poisoned(e.clone());
-                        Err(Flow::Throw(e))
+                        Err(Flow::Throw(e, at))
                     }
                     Err(other) => {
                         self.iso.statics[sid.0 as usize] = StaticSlot::Uninit;

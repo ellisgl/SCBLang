@@ -15,6 +15,21 @@ pub fn register(n: &mut Natives) {
     for (name, f) in fns {
         n.insert(format!("Throwable.{name}"), *f);
     }
+    n.insert("assert".into(), assert);
+    // SPEC-OPEN: Q42 — the POC has no release build, so `debugAssert` is checked.
+    n.insert("debugAssert".into(), assert);
+}
+
+/// `assert($condition, $message = '')`: `AssertionError` when false.
+fn assert(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
+    if c.args[0].as_bool() {
+        return Ok(Value::Null);
+    }
+    let message = match c.args[1].as_str() {
+        "" => "assertion failed".to_string(),
+        m => m.to_string(),
+    };
+    Err(it.error("AssertionError", message, c.span))
 }
 
 fn with_state<T>(c: &NativeCall, f: impl FnOnce(&mut ThrowableState) -> T) -> Option<T> {

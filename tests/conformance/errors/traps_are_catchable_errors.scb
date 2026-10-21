@@ -1,0 +1,71 @@
+// EXPECT-STDOUT:
+// | OverflowError
+// | DivisionByZeroError
+// | DivisionByZeroError
+// | CastError
+// | IndexError
+// | KeyError
+// | BoundaryError
+// | ValueError
+// | ExclusivityError
+// | AssertionError
+// | StaticInitError
+namespace Conformance;
+
+class Box
+{
+    public function __construct(public $v: int) {}
+}
+
+class Broken
+{
+    public static $value: int = Broken::fail();
+
+    public static function fail(): int
+    {
+        throw new \ValueError('init failed');
+    }
+}
+
+function swap(inout $a: int, inout $b: int): void {}
+
+function report($e: \Error): void
+{
+    $name: string = match {
+        $e instanceof \OverflowError => 'OverflowError',
+        $e instanceof \DivisionByZeroError => 'DivisionByZeroError',
+        $e instanceof \CastError => 'CastError',
+        $e instanceof \IndexError => 'IndexError',
+        $e instanceof \KeyError => 'KeyError',
+        $e instanceof \BoundaryError => 'BoundaryError',
+        $e instanceof \ValueError => 'ValueError',
+        $e instanceof \ExclusivityError => 'ExclusivityError',
+        $e instanceof \AssertionError => 'AssertionError',
+        $e instanceof \StaticInitError => 'StaticInitError',
+        default => 'other',
+    };
+    echo $name, "\n";
+}
+
+function main(): void
+{
+    $max: i8 = 127;
+    $zero: int = 0;
+    $list: list<int> = [];
+    $map: map<string, int> = [];
+    $b: Box = new Box(1);
+    $c: Box = $b;
+    try { $max++; } catch ($e: \Error) { report($e); }
+    try { echo 1 ~/ $zero; } catch ($e: \Error) { report($e); }
+    try { echo 1 % $zero; } catch ($e: \Error) { report($e); }
+    $neg: int = -1;
+    try { echo (u8) $neg; } catch ($e: \Error) { report($e); }
+    try { echo $list[0]; } catch ($e: \Error) { report($e); }
+    try { echo $map['x']; } catch ($e: \Error) { report($e); }
+    try { echo 'é'->slice(1..<2); } catch ($e: \Error) { report($e); }
+    try { echo 'a'->repeat(-1); } catch ($e: \Error) { report($e); }
+    try { swap(inout $b->v, inout $c->v); } catch ($e: \Error) { report($e); }
+    try { assert(false); } catch ($e: \Error) { report($e); }
+    try { echo Broken::$value; } catch ($e: \Error) { }
+    try { echo Broken::$value; } catch ($e: \Error) { report($e); }
+}

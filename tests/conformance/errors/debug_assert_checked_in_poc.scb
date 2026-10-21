@@ -1,0 +1,8 @@
+// EXPECT-RUNTIME-ERROR: AssertionError
+// SPEC-OPEN: Q42
+namespace Conformance;
+
+function main(): void
+{
+    debugAssert(false, 'checked: the POC has no release build');
+}
