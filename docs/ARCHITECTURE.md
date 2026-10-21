@@ -16,8 +16,8 @@ How the SCB POC interpreter is put together, for someone opening the code for th
 | Lexer | `scb-syntax` | `lex()` | done (M1) |
 | Parser and AST | `scb-syntax` | `parse()`, `parse_source()`, `ast` | done (M2) |
 | Name resolution, type checking | `scb-types` | `check()` → `Program` (typed IR) | done (M3) |
-| Interpreter, values, refcounting | `scb-runtime` | `Isolate::run()` | M4–M6 |
-| Core library | `scb-stdlib` | — | M7 |
+| Interpreter, values, refcounting | `scb-runtime` | `Isolate::run()` | M4 (destructors, runtime exclusivity: M5) |
+| Core library | `scb-stdlib` | `natives()` | M4 (the stub API), M7 (rest) |
 | Conformance runner | `scb-conformance` | `cargo run -p scb-conformance` | done (M0) |
 
 Each stage reports problems as `Diagnostic`s (a stable `kind`, a message, a `Span`, optional notes and a fix-it; the kinds are listed in `DIAGNOSTICS.md`) and keeps going where it can, so a single run shows every independent error. A later stage runs only when the earlier ones produced no errors.
@@ -53,7 +53,19 @@ Types are interned (`ty.rs`): a `Ty` is a small integer, unions are normalized, 
 
 ## Runtime (`scb-runtime`)
 
-All interpreter state lives in an `Isolate`. Nothing is global; this is CLAUDE.md architecture rule 1. The isolate owns its stdout, stderr, stdin and environment as injected handles (`IsolateIo`): only the CLI connects real OS handles, and a later FastCGI server can give each request its own. Stdout is buffered and is flushed before stdin reads and on exit. The compiled `Program` is immutable and shared as `Arc<Program>`, so one compilation can serve many isolates.
+All interpreter state lives in an `Isolate`. Nothing is global; this is CLAUDE.md architecture rule 1. The isolate owns its stdout, stderr, stdin and environment as injected handles (`IsolateIo`): only the CLI connects real OS handles, and a later FastCGI server can give each request its own. Stdout is buffered and flushed before stdin reads and on exit. The compiled `Program` is immutable and shared as `Arc<Program>`, so one compilation can serve many isolates.
+
+**Values** (`value.rs`): primitives are stored inline (`I8(i8)` … `F64(f64)`, `Bool`). Strings, bytes, lists, maps, sets, tuples, structs and enums with payloads sit behind an `Rc` and are copy-on-write through `Rc::make_mut`: a write copies only a shared level. Class instances are `Rc<RefCell<…>>`.
+
+**Interpreter** (`interp/`): a tree-walking evaluator over the TIR.
+- *Errors.* Every evaluation returns `Result<_, Flow>`, where `Flow` is a thrown value, `exit`, `return`, `break`/`continue`, a fatal error or `abort`.
+- *Writes* (`interp/place.rs`). A write evaluates the place's path first, then the right side, then walks the path making each value level unique.
+- *Moves.* `inout` arguments and `mutating` receivers move their value into the callee's frame and back out (also after a throw), so the callee mutates an unshared value in place. A loop of `push` is therefore O(n) (`scb-stdlib/tests/run.rs` guards this).
+- *Integers.* Integer operations compute in `i128` and trap on overflow.
+
+**Core library** (`scb-stdlib`): native functions registered by the names the checker gives stub declarations (`list.push`, `i8::wrap`, `Io\print`). The CLI hands them to the isolate (`Isolate::with_natives`), so the runtime does not depend on the stdlib.
+
+**Stack.** SCB calls recurse in Rust. The runtime caps call depth (a fatal "stack overflow" error, as the spec requires), and the CLI runs programs on a thread with a 1 GiB stack (reserved, only touched pages are committed), so the cap is reached before the Rust stack is.
 
 ## Tests
 

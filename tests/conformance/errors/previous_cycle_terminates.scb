@@ -1,0 +1,20 @@
+// EXPECT-STDOUT:
+// | caught
+// EXPECT-STDERR-CONTAINS: discarded by throw
+namespace Conformance;
+
+// Regression: a throwable whose previous chain loops printed forever.
+
+function main(): void
+{
+    $e: \Exception = new \Exception('a');
+    try {
+        try {
+            throw $e;
+        } finally {
+            throw new \Exception('b', 0, $e);
+        }
+    } catch (\Exception) {
+        echo "caught\n";
+    }
+}

@@ -1,0 +1,13 @@
+// EXPECT-RUNTIME-ERROR: Exception
+// EXPECT-STDERR-CONTAINS: exit(3) superseded by throw
+// SPEC-OPEN: Q40
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        exit(3);
+    } finally {
+        throw new \Exception('late');
+    }
+}

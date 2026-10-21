@@ -1,0 +1,18 @@
+// EXPECT-STDOUT:
+// | a=5
+namespace Conformance;
+
+// Regression: when a later `inout` argument faulted, earlier ones were lost.
+
+function swap(inout $a: int, inout $b: int): void {}
+
+function main(): void
+{
+    $a: int = 5;
+    $l: list<int> = [1];
+    try {
+        swap(inout $a, inout $l[9]);
+    } catch (IndexError) {
+        echo "a=", $a, "\n";
+    }
+}

@@ -20,6 +20,10 @@ use scb_syntax::{Diagnostic, SourceMap};
 const EXIT_COMPILE_ERROR: u8 = 2;
 const EXIT_USAGE: u8 = 64;
 const EXIT_NO_INPUT: u8 = 66;
+const EXIT_INTERNAL: i32 = 70;
+
+/// Stack size of the thread that runs the program (see `RUNTIME_STACK` users).
+const RUNTIME_STACK: usize = 1024 * 1024 * 1024;
 
 const USAGE: &str = "usage: scb run <file.scb|dir> [args…]\n       scb check <file.scb|dir>";
 
@@ -67,13 +71,33 @@ fn main() -> ExitCode {
     }
 
     let args: Vec<Vec<u8>> = argv.map(os_bytes).collect();
-    let io = IsolateIo {
-        stdout: Box::new(io::stdout().lock()),
-        stderr: Box::new(io::stderr()),
-        stdin: Box::new(BufReader::new(io::stdin())),
-        env: Box::new(OsEnv),
+    let program_name = path.display().to_string();
+    // The interpreter recurses per SCB call; a large stack lets programs use the
+    // runtime's full call-depth limit (deeper calls are a fatal "stack overflow").
+    let runner = std::thread::Builder::new()
+        .name("scb-main".into())
+        .stack_size(RUNTIME_STACK)
+        .spawn(move || {
+            let io = IsolateIo {
+                stdout: Box::new(io::stdout().lock()),
+                stderr: Box::new(io::stderr()),
+                stdin: Box::new(BufReader::new(io::stdin())),
+                env: Box::new(OsEnv),
+            };
+            let mut isolate = Isolate::with_natives(io, scb_stdlib::natives());
+            isolate.set_program_name(program_name);
+            let RunOutcome::Exit(code) = isolate.run(&program, &args);
+            code
+        });
+    let code = match runner {
+        Ok(handle) => handle
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+        Err(e) => {
+            eprintln!("scb: cannot start the program thread: {e}");
+            EXIT_INTERNAL
+        }
     };
-    let RunOutcome::Exit(code) = Isolate::new(io).run(&program, &args);
     ExitCode::from(code.clamp(0, 255) as u8)
 }
 

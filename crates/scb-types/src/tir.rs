@@ -45,6 +45,15 @@ pub struct Func {
     pub span: Span,
 }
 
+/// An initializer evaluated outside any function: a constant, a static property, a
+/// property default or a backed-enum case value. `locals` sizes the temporary frame
+/// it runs in (a `?->` or a `match` binding needs slots).
+#[derive(Debug)]
+pub struct Init {
+    pub expr: Expr,
+    pub locals: Vec<Local>,
+}
+
 #[derive(Debug)]
 pub enum Body {
     Block(Block),
@@ -379,9 +388,11 @@ pub enum CallTarget {
         func: FuncId,
         receiver: Option<Box<Receiver>>,
     },
-    /// A core-library function or method on a built-in type.
+    /// A core-library function or method on a built-in type: `func` is its stub
+    /// (parameter defaults; the runtime finds the native by it), `builtin` its name.
     Builtin {
         builtin: Builtin,
+        func: FuncId,
         receiver: Option<Box<Receiver>>,
     },
     /// Calling a value of function type: `$f(…)`.

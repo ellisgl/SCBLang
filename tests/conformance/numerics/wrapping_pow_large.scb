@@ -1,0 +1,13 @@
+// EXPECT-STDOUT:
+// | 8733086111712066817
+// | null
+// | 0
+namespace Conformance;
+
+function main(): void
+{
+    echo u64::wrappingPow(3, 64), "\n";
+    $big: u64 = 4294967296;
+    echo u64::checkedPow($big, 3) == null ? 'null' : 'value', "\n";
+    echo u64::wrappingPow($big, 3), "\n";
+}

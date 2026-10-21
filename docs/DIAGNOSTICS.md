@@ -23,7 +23,8 @@ path/to/file.scb:LINE:COL: error[kind]: message
 | 2 | Compile error (one or more diagnostics on stderr) |
 | 64 | Usage error (bad command line, path is neither a `.scb` file nor a directory) |
 | 66 | Input missing or unreadable |
-| 70 | Internal: interpreter not implemented yet (M0–M3 only) |
+| 70 | Internal: the program could not be started (the OS refused its thread) |
+| 134 | `scb run`: the program called `Process\abort()` |
 
 A program can itself exit with 2, 64, 66 or 70; tools that need to tell the cases apart check stderr for `error[`.
 

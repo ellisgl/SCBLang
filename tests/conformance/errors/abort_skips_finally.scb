@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// EXPECT-EXIT: 134
+namespace Conformance;
+
+function main(): void
+{
+    try {
+        \Process\abort();
+    } finally {
+        echo "finally ran\n";
+    }
+}

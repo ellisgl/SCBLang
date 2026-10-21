@@ -9,7 +9,13 @@ use std::collections::HashMap;
 use std::io::{self, BufRead, BufWriter, Read, Write};
 use std::sync::Arc;
 
+use scb_syntax::Span;
 use scb_types::Program;
+use scb_types::decls::DeclId;
+use scb_types::tir::FuncId;
+
+use crate::interp::{Interp, Natives};
+use crate::value::Value;
 
 /// Stdout buffer size (SPEC: "size implementation-defined").
 const STDOUT_BUFFER: usize = 8 * 1024;
@@ -46,6 +52,23 @@ pub enum RunOutcome {
     Exit(i32),
 }
 
+/// One function activation: its local slots.
+#[derive(Debug, Default)]
+pub(crate) struct Frame {
+    pub locals: Vec<Value>,
+}
+
+/// A static property's lifecycle (SPEC "Static initialization").
+#[derive(Debug)]
+pub(crate) enum StaticSlot {
+    Uninit,
+    /// Its initializer is running: an access now is a cycle.
+    Running,
+    Ready(Value),
+    /// Its initializer threw this; every later access throws `StaticInitError`.
+    Poisoned(Value),
+}
+
 /// All interpreter state for one execution of a [`Program`]. No interpreter
 /// state lives anywhere else (CLAUDE.md architecture rule 1).
 pub struct Isolate {
@@ -53,25 +76,70 @@ pub struct Isolate {
     stderr: Box<dyn Write>,
     stdin: Box<dyn BufRead>,
     env: Box<dyn Env>,
+    /// The core library's native functions (provided by the embedder).
+    pub(crate) natives: Natives,
+    pub(crate) frames: Vec<Frame>,
+    /// The SCB call stack: callee and call site, outermost first.
+    pub(crate) calls: Vec<(FuncId, Span)>,
+    pub(crate) statics: Vec<StaticSlot>,
+    pub(crate) consts: Vec<Option<Value>>,
+    /// Resolved dynamic dispatch: (runtime type, statically resolved method) →
+    /// implementation.
+    pub(crate) vtables: HashMap<(DeclId, FuncId), FuncId>,
+    /// The result type of the builtin call about to run (see `NativeCall::ret`).
+    pub(crate) ret_hint: Option<scb_types::ty::Ty>,
+    /// `Process\name()`.
+    program_name: String,
 }
 
 impl Isolate {
+    /// An isolate without core-library natives (enough for programs that do not call
+    /// the stdlib; embedders use [`Isolate::with_natives`]).
     pub fn new(io: IsolateIo) -> Self {
+        Self::with_natives(io, Natives::new())
+    }
+
+    pub fn with_natives(io: IsolateIo, natives: Natives) -> Self {
         Isolate {
             stdout: BufWriter::with_capacity(STDOUT_BUFFER, io.stdout),
             stderr: io.stderr,
             stdin: io.stdin,
             env: io.env,
+            natives,
+            frames: Vec::new(),
+            calls: Vec::new(),
+            statics: Vec::new(),
+            consts: Vec::new(),
+            vtables: HashMap::new(),
+            ret_hint: None,
+            program_name: "scb".into(),
         }
     }
 
-    /// Runs `main` with the user arguments (raw bytes; UTF-8 is checked before `main`).
-    ///
-    /// M0: the interpreter does not exist yet (M4).
-    pub fn run(&mut self, _program: &Arc<Program>, _args: &[Vec<u8>]) -> RunOutcome {
-        let _ = self.write_stderr(b"scb: the interpreter is not implemented yet\n");
+    /// The name `Process\name()` reports (the CLI passes the program's path).
+    pub fn set_program_name(&mut self, name: impl Into<String>) {
+        self.program_name = name.into();
+    }
+
+    pub fn program_name(&self) -> &str {
+        &self.program_name
+    }
+
+    /// Drops buffered stdout without writing it (`Process\abort()`).
+    pub(crate) fn discard_stdout(&mut self) {
+        let fresh = BufWriter::with_capacity(STDOUT_BUFFER, Box::new(io::sink()) as Box<dyn Write>);
+        let old = std::mem::replace(&mut self.stdout, fresh);
+        // `into_parts` returns the inner writer without flushing the buffer.
+        let (inner, _unflushed) = old.into_parts();
+        self.stdout = BufWriter::with_capacity(STDOUT_BUFFER, inner);
+    }
+
+    /// Runs `main` with the user arguments (raw bytes; UTF-8 is checked before
+    /// `main`) and returns the process exit code. Stdout is flushed at the end.
+    pub fn run(&mut self, program: &Arc<Program>, args: &[Vec<u8>]) -> RunOutcome {
+        let code = Interp::new(self, program).run_main(args);
         let _ = self.flush_stdout();
-        RunOutcome::Exit(70)
+        RunOutcome::Exit(code)
     }
 
     /// Buffered write to stdout.

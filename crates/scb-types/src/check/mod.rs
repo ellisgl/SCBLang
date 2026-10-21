@@ -388,7 +388,6 @@ impl Ctx<'_> {
             self.require_constant(d, true);
             defaults.push((idx, e));
         }
-        self.field_defaults[id.0 as usize] = defaults;
 
         // Backed enum values: constants of the backing type, all different.
         let backing = self.decls.ty(id).backing;
@@ -423,8 +422,15 @@ impl Ctx<'_> {
             };
             values.push(value);
         }
-        self.case_values[id.0 as usize] = values;
-        self.frames.pop();
+        // Every initializer of the type ran in this one frame; each gets its slots.
+        let frame = self.frames.pop().expect("pushed above");
+        let init = |expr| tir::Init {
+            expr,
+            locals: frame.locals.clone(),
+        };
+        self.field_defaults[id.0 as usize] =
+            defaults.into_iter().map(|(i, e)| (i, init(e))).collect();
+        self.case_values[id.0 as usize] = values.into_iter().map(|v| v.map(init)).collect();
     }
 
     /// A constant whose initializer depends on itself would never finish evaluating.
@@ -435,8 +441,8 @@ impl Ctx<'_> {
             .iter()
             .map(|c| {
                 let mut out = Vec::new();
-                if let Some(e) = c {
-                    const_refs(e, &mut out);
+                if let Some(init) = c {
+                    const_refs(&init.expr, &mut out);
                 }
                 out
             })
@@ -648,8 +654,11 @@ impl Ctx<'_> {
         self.frames.push(frame);
         let e = self.expr_as(value, ty);
         self.require_constant(value, false);
-        self.frames.pop();
-        self.consts[id.0 as usize] = Some(e);
+        let frame = self.frames.pop().expect("pushed above");
+        self.consts[id.0 as usize] = Some(tir::Init {
+            expr: e,
+            locals: frame.locals,
+        });
     }
 
     fn check_static(&mut self, id: StaticId) {
@@ -671,8 +680,11 @@ impl Ctx<'_> {
                 span: p.name.span,
             },
         };
-        self.frames.pop();
-        self.statics[id.0 as usize] = Some(e);
+        let frame = self.frames.pop().expect("pushed above");
+        self.statics[id.0 as usize] = Some(tir::Init {
+            expr: e,
+            locals: frame.locals,
+        });
     }
 
     /// `main` must exist in the user's namespace with an allowed signature (SPEC

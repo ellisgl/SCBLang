@@ -1,0 +1,12 @@
+// EXPECT-STDOUT:
+// | 0 3 -3 2 3
+namespace Conformance;
+
+function main(): void
+{
+    echo i64::round(0.49999999999999994, \Math\Rounding::HALF_UP), ' ',
+        i64::round(2.5, \Math\Rounding::HALF_UP), ' ',
+        i64::round(-2.5, \Math\Rounding::HALF_UP), ' ',
+        i64::round(2.5, \Math\Rounding::HALF_EVEN), ' ',
+        i64::round(2.5, \Math\Rounding::CEIL), "\n";
+}

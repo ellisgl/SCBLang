@@ -1,0 +1,10 @@
+// EXPECT-RUNTIME-ERROR: OverflowError
+namespace Conformance;
+
+// Regression: u64 × u64 exceeded the interpreter's i128 and crashed it.
+
+function main(): void
+{
+    $a: u64 = 18446744073709551615;
+    $b: u64 = $a * $a;
+}

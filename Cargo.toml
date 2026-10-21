@@ -12,6 +12,7 @@ scb-syntax = { path = "crates/scb-syntax" }
 scb-types = { path = "crates/scb-types" }
 scb-runtime = { path = "crates/scb-runtime" }
 scb-stdlib = { path = "crates/scb-stdlib" }
+unicode-segmentation = "1.12.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

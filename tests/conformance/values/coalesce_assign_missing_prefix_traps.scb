@@ -1,0 +1,21 @@
+// EXPECT-STDOUT:
+// | KeyError
+namespace Conformance;
+
+// Only the last map key may be missing for `??=`; the right side is not evaluated.
+
+function side(): list<int>
+{
+    echo "evaluated\n";
+    return [];
+}
+
+function main(): void
+{
+    $m: map<string, map<string, list<int>>> = [];
+    try {
+        $m['a']['b'] ??= side();
+    } catch (KeyError) {
+        echo "KeyError\n";
+    }
+}

@@ -1,0 +1,13 @@
+// EXPECT-STDOUT:
+// | 3
+namespace Conformance;
+
+function main(): void
+{
+    $l: list<int> = [3, 1, 2];
+    try {
+        $l->sortBy(fn($a: int, $b: int): int => throw new \Exception('no'));
+    } catch (\Exception) {
+    }
+    echo $l->count(), "\n";
+}

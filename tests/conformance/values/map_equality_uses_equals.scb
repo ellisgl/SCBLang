@@ -1,0 +1,16 @@
+// EXPECT-STDOUT:
+// | true
+namespace Conformance;
+
+class Id implements \Equatable
+{
+    public function __construct(public $v: int) {}
+    public function equals($other: self): bool { return $this->v == $other->v; }
+}
+
+function main(): void
+{
+    $a: map<string, Id> = ['x' => new Id(1)];
+    $b: map<string, Id> = ['x' => new Id(1)];
+    echo $a == $b ? 'true' : 'false', "\n";
+}

@@ -34,16 +34,16 @@ pub struct Program {
     /// stdlib builtins), closures.
     pub funcs: Vec<tir::Func>,
     /// Initializer of each constant (namespace and class), indexed by `ConstId`.
-    pub consts: Vec<tir::Expr>,
+    pub consts: Vec<tir::Init>,
     /// Initializer of each static property (evaluated lazily), indexed by `StaticId`.
-    pub statics: Vec<tir::Expr>,
+    pub statics: Vec<tir::Init>,
     /// Default values of each type's own instance properties, indexed by `DeclId`:
     /// evaluated for every new instance, superclass defaults first, before the
     /// constructor runs.
-    pub field_defaults: Vec<Vec<(decls::FieldIdx, tir::Expr)>>,
+    pub field_defaults: Vec<Vec<(decls::FieldIdx, tir::Init)>>,
     /// The value of each case of a backed enum, indexed by `DeclId` then case
     /// (`None` for other types and cases).
-    pub case_values: Vec<Vec<Option<tir::Expr>>>,
+    pub case_values: Vec<Vec<Option<tir::Init>>>,
     /// The program's `main`.
     pub main: FuncId,
 }
@@ -63,10 +63,10 @@ pub(crate) struct Ctx<'a> {
     pub decls: Decls,
     /// Bodies, filled as they are checked (`None` until then).
     pub funcs: Vec<Option<tir::Func>>,
-    pub consts: Vec<Option<tir::Expr>>,
-    pub statics: Vec<Option<tir::Expr>>,
-    pub field_defaults: Vec<Vec<(decls::FieldIdx, tir::Expr)>>,
-    pub case_values: Vec<Vec<Option<tir::Expr>>>,
+    pub consts: Vec<Option<tir::Init>>,
+    pub statics: Vec<Option<tir::Init>>,
+    pub field_defaults: Vec<Vec<(decls::FieldIdx, tir::Init)>>,
+    pub case_values: Vec<Vec<Option<tir::Init>>>,
     /// Declared `map` / `set` types, checked for `Hashable` keys once every type's
     /// fields are known (`check_bodies`).
     pub pending_hashable: Vec<(ty::Ty, scb_syntax::Span)>,

@@ -6,6 +6,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+scb-syntax.workspace = true
 scb-types.workspace = true
 
 [lints]

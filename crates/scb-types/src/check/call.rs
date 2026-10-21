@@ -199,6 +199,7 @@ impl Ctx<'_> {
         let target = if self.is_builtin(mid) {
             CallTarget::Builtin {
                 builtin: self.builtin_name(mid),
+                func: self.decls.method(mid).func,
                 receiver: Some(Box::new(receiver)),
             }
         } else {
@@ -446,6 +447,7 @@ impl Ctx<'_> {
         let target = if self.is_builtin(mid) {
             CallTarget::Builtin {
                 builtin: self.builtin_name(mid),
+                func: self.decls.method(mid).func,
                 receiver: None,
             }
         } else {
@@ -649,6 +651,7 @@ impl Ctx<'_> {
         let target = if self.is_builtin(mid) {
             CallTarget::Builtin {
                 builtin: self.builtin_name(mid),
+                func: self.decls.method(mid).func,
                 receiver,
             }
         } else {
@@ -905,6 +908,7 @@ impl Ctx<'_> {
                 let target = if self.is_builtin(mid) {
                     CallTarget::Builtin {
                         builtin: self.builtin_name(mid),
+                        func,
                         receiver: Some(Box::new(Receiver::Value(recv))),
                     }
                 } else {
@@ -1113,17 +1117,24 @@ impl Ctx<'_> {
             TyKind::List(e) => (Ty::I64, e),
             _ => unreachable!("callers check for map or list"),
         };
-        let builtin = if matches!(self.types.kind(obj.ty), TyKind::Map(..)) {
-            "map.get"
+        let (builtin, stub) = if matches!(self.types.kind(obj.ty), TyKind::Map(..)) {
+            ("map.get", "map")
         } else {
-            "list.get"
+            ("list.get", "list")
         };
+        let func = self
+            .decls
+            .type_named(stub)
+            .and_then(|d| self.decls.find_method(d, "get"))
+            .map(|m| self.decls.method(m).func)
+            .expect("the prelude declares map.get and list.get");
         let key = self.expr_as(index, key_ty);
         let ty = self.types.nullable(value_ty);
         Expr {
             kind: T::Call {
                 target: CallTarget::Builtin {
                     builtin: Builtin(builtin.into()),
+                    func,
                     receiver: Some(Box::new(Receiver::Value(obj))),
                 },
                 args: vec![Arg {

@@ -1,0 +1,8 @@
+// EXPECT-RUNTIME-ERROR: ValueError
+// SPEC-OPEN: Q38
+namespace Conformance;
+
+function main(): void
+{
+    exit(300);
+}

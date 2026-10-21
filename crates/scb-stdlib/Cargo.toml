@@ -7,6 +7,11 @@ publish.workspace = true
 
 [dependencies]
 scb-runtime.workspace = true
+scb-syntax.workspace = true
+scb-types.workspace = true
+unicode-segmentation.workspace = true
+
+[dev-dependencies]
 
 [lints]
 workspace = true
