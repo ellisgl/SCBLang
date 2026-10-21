@@ -113,51 +113,53 @@ impl Interp<'_> {
     /// values visited in the containers that stay live. With `pending_live`,
     /// objects whose destructor is still due count as live.
     fn find_garbage(&mut self, pending_live: bool) -> (Vec<Rc<RefCell<ObjectValue>>>, usize) {
-        // 1. Gather: one handle per container, objects first.
+        // 1. Gather: one handle per container, objects first. Indexes are `u32` and
+        // the edges one flat array (node `k`'s are `targets[starts[k]..starts[k + 1]]`):
+        // the bookkeeping is a few bytes per container.
         let mut nodes: Vec<Value> = Vec::new();
-        let mut index: HashMap<usize, usize> = HashMap::new();
+        let mut index: HashMap<usize, u32> = HashMap::new();
         for w in &self.iso.objects {
             if let Some(o) = w.upgrade() {
                 let v = Value::Object(o);
                 if let Some(key) = key_of(&v) {
                     index.entry(key).or_insert_with(|| {
                         nodes.push(v);
-                        nodes.len() - 1
+                        (nodes.len() - 1) as u32
                     });
                 }
             }
         }
-        let mut edges: Vec<Vec<usize>> = Vec::new();
+        let mut starts: Vec<u32> = vec![0];
+        let mut targets: Vec<u32> = Vec::new();
         // Containers whose contents could not be read count as live.
         let mut opaque: Vec<bool> = Vec::new();
         // Per container: 1 + the values in it.
-        let mut work: Vec<usize> = Vec::new();
+        let mut visits: Vec<u32> = Vec::new();
         let mut i = 0;
         while i < nodes.len() {
             let node = nodes[i].clone();
-            let mut out = Vec::new();
-            let mut visits = 1;
+            let mut n: u32 = 1;
             let readable = children(&node, &mut |child| {
-                visits += 1;
+                n = n.saturating_add(1);
                 if let Some(key) = key_of(child) {
                     let j = *index.entry(key).or_insert_with(|| {
                         nodes.push(child.clone());
-                        nodes.len() - 1
+                        (nodes.len() - 1) as u32
                     });
-                    out.push(j);
+                    targets.push(j);
                 }
             });
-            edges.push(out);
+            starts.push(targets.len() as u32);
             opaque.push(!readable);
-            work.push(visits);
+            visits.push(n);
             i += 1;
         }
+        drop(index);
+        let edges = |k: usize| &targets[starts[k] as usize..starts[k + 1] as usize];
         // 2. Outside references: refcount − our handle − references from the set.
         let mut outside: Vec<isize> = nodes.iter().map(|v| strong_count(v) as isize - 1).collect();
-        for out in &edges {
-            for &j in out {
-                outside[j] -= 1;
-            }
+        for &j in &targets {
+            outside[j as usize] -= 1;
         }
         // 3. Everything reachable from a node with outside references is live.
         let mut live: Vec<bool> = outside
@@ -166,16 +168,20 @@ impl Interp<'_> {
             .zip(&nodes)
             .map(|((&n, &o), v)| n > 0 || o || (pending_live && destructor_due(v)))
             .collect();
+        drop(outside);
         let mut stack: Vec<usize> = (0..nodes.len()).filter(|&k| live[k]).collect();
         while let Some(k) = stack.pop() {
-            for &j in &edges[k] {
-                if !live[j] {
-                    live[j] = true;
-                    stack.push(j);
+            for &j in edges(k) {
+                if !live[j as usize] {
+                    live[j as usize] = true;
+                    stack.push(j as usize);
                 }
             }
         }
-        let work = (0..nodes.len()).filter(|&k| live[k]).map(|k| work[k]).sum();
+        let work = (0..nodes.len())
+            .filter(|&k| live[k])
+            .map(|k| visits[k] as usize)
+            .sum();
         let garbage = nodes
             .into_iter()
             .zip(live)
@@ -239,7 +245,7 @@ fn children(v: &Value, f: &mut dyn FnMut(&Value)) -> bool {
         Value::Object(o) => match o.try_borrow() {
             Ok(o) => {
                 o.fields.iter().for_each(&mut *f);
-                if let Some(crate::value::NativeState::Throwable(t)) = &o.native
+                if let Some(crate::value::NativeState::Throwable(t)) = o.native.as_deref()
                     && let Some(p) = &t.previous
                 {
                     f(p);

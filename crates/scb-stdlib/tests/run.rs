@@ -208,6 +208,24 @@ function main(): void
     assert_eq!(run_with_closed_stdout(src), (0, "caught\n".into()));
 }
 
+/// A failed write is reported once: the uncaught `IoException`, not again by the
+/// flush at program end (the undeliverable buffer is dropped with the failure).
+#[test]
+fn failed_write_is_reported_once() {
+    let src = r#"namespace T;
+function main(): void
+{
+    for ($i: int = 0; $i < 10000; $i++) {
+        echo "line\n";
+    }
+}
+"#;
+    let (code, err) = run_with_closed_stdout(src);
+    assert_eq!(code, 1);
+    assert!(err.starts_with("Uncaught IoException"), "{err}");
+    assert!(!err.contains("cannot write to stdout"), "{err}");
+}
+
 /// A long chain of destructible objects is destructed iteratively (no Rust stack
 /// growth per link), in order, each destructor before its fields.
 #[test]

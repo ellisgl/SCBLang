@@ -1,0 +1,40 @@
+// EXPECT-STDOUT:
+// | 9223372036854774784
+// | CastError i64
+// | CastError u64
+// | 18446744073709549568
+// | 1 0
+// | 3 0,4,8
+// | ab|
+// | 1.1
+namespace Conformance;
+
+// Limits of the numeric statics and ranges: `round()` to the type's edge (2^63 and
+// 2^64 are not representable in `i64` / `u64`), repeated `step()` (the step stops
+// growing once one value is left), a padding length of `i64::MIN`, and `f32`
+// parsing at `f32` precision.
+
+function main(): void
+{
+    echo i64::round(9223372036854774784.0, \Math\Rounding::FLOOR), "\n";
+    try {
+        echo i64::round(9223372036854775808.0, \Math\Rounding::FLOOR), "\n";
+    } catch (\CastError) {
+        echo "CastError i64\n";
+    }
+    try {
+        echo u64::round(18446744073709551616.0, \Math\Rounding::FLOOR), "\n";
+    } catch (\CastError) {
+        echo "CastError u64\n";
+    }
+    echo u64::round(18446744073709549568.0, \Math\Rounding::FLOOR), "\n";
+
+    $big: int = 4611686018427387904;
+    $r: Range<int> = (0..<10)->step($big)->step($big)->step($big)->step($big);
+    echo $r->count(), ' ', $r->toList()[0], "\n";
+    $s: Range<int> = (0..<10)->step(4);
+    echo $s->count(), ' ', $s->toList()->join(','), "\n";
+
+    echo 'ab'->padStart(-9223372036854775807 - 1, '-'), "|\n";
+    echo f32::parse('1.1'), "\n";
+}

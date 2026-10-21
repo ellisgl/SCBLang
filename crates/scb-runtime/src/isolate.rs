@@ -182,9 +182,15 @@ impl Isolate {
         RunOutcome::Exit(code)
     }
 
-    /// Buffered write to stdout.
+    /// Buffered write to stdout. After a failure the buffer is dropped: its bytes
+    /// cannot be delivered, and keeping them would make every later flush (the one
+    /// at program end included) fail and report the same error again.
     pub fn write_stdout(&mut self, bytes: &[u8]) -> io::Result<()> {
-        self.stdout.write_all(bytes)
+        let r = self.stdout.write_all(bytes);
+        if r.is_err() {
+            self.discard_stdout();
+        }
+        r
     }
 
     /// Unbuffered write to stderr.
@@ -193,8 +199,14 @@ impl Isolate {
         self.stderr.flush()
     }
 
+    /// Flushes stdout; after a failure the buffer is dropped, as in
+    /// [`Self::write_stdout`].
     pub fn flush_stdout(&mut self) -> io::Result<()> {
-        self.stdout.flush()
+        let r = self.stdout.flush();
+        if r.is_err() {
+            self.discard_stdout();
+        }
+        r
     }
 
     /// Reads one line including its terminator; `None` at end of input.

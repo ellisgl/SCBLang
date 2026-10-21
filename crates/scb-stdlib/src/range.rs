@@ -85,9 +85,9 @@ fn step(it: &mut Interp<'_>, c: &mut NativeCall) -> R<Value> {
         ));
     }
     let r = range(c);
-    Ok(Value::Range(Rc::new(RangeValue {
-        step: r.step * n,
-        count: (r.count + n - 1) / n,
-        ..r
-    })))
+    let count = (r.count + n - 1) / n;
+    // With fewer than two values the step is never used; keeping it bounds it
+    // (repeated `step()` calls would otherwise overflow).
+    let step = if count < 2 { r.step } else { r.step * n };
+    Ok(Value::Range(Rc::new(RangeValue { step, count, ..r })))
 }

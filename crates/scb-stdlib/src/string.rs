@@ -224,7 +224,7 @@ fn padding(it: &mut Interp<'_>, c: &NativeCall) -> R<String> {
         return Err(it.error("ValueError", "padding must not be empty", c.span));
     }
     let have = receiver_str(c).graphemes(true).count() as i64;
-    let missing = (int(c, 0) - have).max(0) as usize;
+    let missing = int(c, 0).saturating_sub(have).max(0) as usize;
     Ok(pad.graphemes(true).cycle().take(missing).collect())
 }
 

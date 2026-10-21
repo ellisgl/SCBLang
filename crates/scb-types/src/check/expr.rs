@@ -690,8 +690,20 @@ impl Ctx<'_> {
         }
     }
 
-    /// Map keys and set elements must be `Hashable` (floats are not).
+    /// Map keys and set elements must be `Hashable` (floats are not). A key type
+    /// hashed by a user `hash()` is outside the POC (SPEC "POC scope" lists user
+    /// `Equatable`, `Comparable` and `Stringable`, not `Hashable`).
     pub(crate) fn require_hashable(&mut self, ty: Ty, span: Span) {
+        if self.conforms(ty, Iface::Hashable)
+            && let Some(d) = self.user_hashing(ty)
+        {
+            let name = self.decls.ty(d).name.clone();
+            self.not_in_poc(
+                span,
+                &format!("map keys and set elements hashed by a user `hash()` (`{name}`)"),
+            );
+            return;
+        }
         if !self.conforms(ty, Iface::Hashable) {
             let mut d = Diagnostic::new(
                 "unsatisfied-bound",
