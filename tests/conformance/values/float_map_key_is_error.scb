@@ -1,0 +1,8 @@
+// EXPECT-COMPILE-ERROR: *
+
+namespace Conformance;
+
+function main(): void
+{
+    $m: map<f64, int> = [1.5 => 1];
+}

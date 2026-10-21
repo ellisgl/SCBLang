@@ -30,7 +30,7 @@ function main($args: list<string>): int
 - `$args` holds user arguments only; the program name comes from `Process\name()`.
 - Environment and stdin come from the stdlib: `Env\get()`, `Io\readLine()`, `Io\readAll()`. A reader/stream API (`Io\Reader`, alongside `Io\Writer`) is post-POC.
 - `main` runs inside the root fiber, so I/O can suspend without setup.
-- A `void` return exits 0. A returned `int` outside 0–255 raises an `Error` on POSIX.
+- A `void` return exits 0. A returned `int` outside 0–255 raises a `ValueError` on POSIX (reported like any uncaught throwable, exit 1).
 - An uncaught throwable prints a stack trace to stderr and exits 1.
 - Stdout is buffered (size implementation-defined). The buffer is flushed when full, before a read from stdin, on normal return from `main`, on `exit`, on an uncaught throwable before the trace is printed, and on a fatal error (e.g. a throwing `__destruct`) before its message: output already echoed is never lost. Stderr is unbuffered. `Process\abort()` does not flush.
 - `Process\exit($code: int): never` unwinds, running `finally` blocks and destructors. It is not a throwable: no `catch` clause, including `catch (Throwable)`, intercepts it. `Process\abort()` terminates immediately.
@@ -200,7 +200,7 @@ Shifts: the amount is always `u32` (literal amounts adapt; a variable needs `(u3
 ## Strings
 
 - `string` is always valid UTF-8. `bytes` holds raw data.
-- Encoding conversion happens only at I/O boundaries: `Str\fromEncoding($bytes, 'ISO-8859-1')`.
+- Encoding conversion happens only at I/O boundaries: `$bytes->decode('ISO-8859-1'): string` (throws `EncodingException`; post-POC), alongside `decodeUtf8()`.
 - No integer subscript (`$s[0]` is a compile error). Use explicit views:
 
 | View | Element | Indexing | Length |
@@ -218,7 +218,7 @@ Interpolation:
 
 - `"$name"` and `"{$expr}"`; `{}` accepts any expression. Single quotes do not interpolate. Heredoc and nowdoc are kept.
 - The simple form is `$name` only. `$name` immediately followed by `->`, `?->` or `[` is a compile error (`ambiguous-interpolation`, fix-it: `{$name->prop}`); PHP's one-level `"$a->b"` / `"$a[0]"` forms are not supported, so nothing is silently printed literally. For a literal `->` after a variable write `{$name}->`.
-- Interpolated values, `echo` / `print` operands and `(string)` operands must be `Stringable`: `string`, ints and floats (Q4 format) are; a union is when every member is (`int|string` prints whichever value it holds). Anything else, including `bool` and `?T` (`null` is not `Stringable`), is a compile error. `bool` has no string conversion at all (not via `echo`, interpolation or `(string)`); the diagnostic's fix-it is `$b ? 'true' : 'false'`.
+- Interpolated values, `echo` / `print` operands and `(string)` operands must be `Stringable`: `string`, ints and floats (format: see Casts and conversions) are; a union is when every member is (`int|string` prints whichever value it holds). Anything else, including `bool` and `?T` (`null` is not `Stringable`), is a compile error. `bool` has no string conversion at all (not via `echo`, interpolation or `(string)`); the diagnostic's fix-it is `$b ? 'true' : 'false'`.
 
 ## Collections and values
 
@@ -252,7 +252,7 @@ Access:
 
 Value semantics:
 
-- `list`, `map`, `set`, `tuple`, `struct` and enums are value types with copy-on-write. Classes are reference types.
+- `string`, `bytes`, `list`, `map`, `set`, `tuple`, `struct` and enums are value types with copy-on-write. Classes are reference types.
 - Copy-on-write mutates in place when the refcount is 1, so the JIT and AOT backends elide most copies.
 - PHP's `&` is removed. A function mutates a caller's value only through `inout`, which is parameter-only and explicit at the call site:
 
@@ -373,6 +373,7 @@ public function join($sep: string): string where T of Stringable
 
 - `Equatable` and `Comparable` are interface-based operator overloading.
 - `Hashable` governs map keys and set members.
+- Built-in conformance: integer types, `string` and `bytes` are `Equatable`, `Hashable` and `Comparable` (`string` / `bytes` byte-wise); float types are `Equatable` (IEEE) and `Comparable` (`totalOrder`), not `Hashable`; `bool` is `Equatable` and `Hashable`, not `Comparable`.
 
 Null checks: comparing any `?T` with the `null` literal via `==` / `!=` is always allowed, including non-`Equatable` classes. Comparing a non-nullable `T` with `null` is a compile error (always false).
 
@@ -525,7 +526,9 @@ $area: f64 = match ($shape) {
 Pattern meaning:
 
 - A bare `$var` in a pattern binds. Literals, constants and enum cases compare directly.
-- A typed binding `$v: T` tests that the value is a `T` and binds `$v` narrowed to `T`; `_: T` tests without binding. Typed bindings are not bare bindings (no guard needed) and work in any pattern position, including enum payloads and list patterns. For exhaustiveness, each member of a union (and `null` in `?T`) must be covered:
+- A typed binding `$v: T` tests that the value is a `T` and binds `$v` narrowed to `T`; `_: T` tests without binding. Typed bindings are not bare bindings (no guard needed) and work in any pattern position, including enum payloads and list patterns. For exhaustiveness, each member of a union (and `null` in `?T`) must be covered (example below).
+- Comparison against any expression uses the `== expr` pattern.
+- A top-level bare binding with no guard is a compile error (fix-it: `== $var` or `default`). This catches PHP's `match ($x) { $limit => … }`, which compares.
 
 ```php
 $label: string = match ($opt) {      // ?int
@@ -537,8 +540,6 @@ $size: int = match ($x) {            // int|string
     $s: string => $s->byteLength(),
 };
 ```
-- Comparison against any expression uses the `== expr` pattern.
-- A top-level bare binding with no guard is a compile error (fix-it: `== $var` or `default`). This catches PHP's `match ($x) { $limit => … }`, which compares.
 
 ```php
 match ($x) {
@@ -607,7 +608,7 @@ Throwable
 ```
 
 - Throwable API (PHP's shape): `__construct($message: string = '', $code: int = 0, $previous: ?Throwable = null)`; `final` accessors `getMessage(): string`, `getCode(): int`, `getPrevious(): ?Throwable`, `getFile(): string`, `getLine(): int`. `getTrace()` / `getTraceAsString()` are post-POC. Subclass constructors call `parent::__construct(...)` (see Property initialization).
-- `Error`s are catchable, so servers and fiber schedulers can isolate a failure. Only out-of-memory and stack overflow abort.
+- `Error`s are catchable, so servers and fiber schedulers can isolate a failure. Only out-of-memory, stack overflow and fatal destructor errors (see Destructors) end the process without being catchable.
 - Kept from PHP 8: `finally`, multi-catch `catch ($e: A | B)`, catch without a variable, `throw` as an expression, `previous` chaining.
 - `return`, `break` and `continue` written directly in a `finally` body, leaving it, are compile errors (`control-leaves-finally`). `break` / `continue` of a loop nested inside the `finally` body are fine. `exit(…)` and `throw` remain allowed.
 - Anything that still leaves a `finally` while a throwable is pending (a `throw`, an `exit`, or either reached through a call) wins, and the pending throwable is never dropped silently: its trace is printed to stderr marked "discarded by throw / exit(n) at file:line". A new throwable that has no `previous` also gets the discarded one as `previous`.
@@ -826,13 +827,13 @@ String edge cases:
 | Decode | `decodeUtf8(): string` (throws `EncodingException`), `tryDecodeUtf8(): ?string` |
 | Compare | `==` / `!=` byte-wise; `Hashable` |
 
-`Range<T>`: `contains($v)`, `count()`, `toList()`, `reversed()`, `step($n)`.
+`Range<T>`: `contains($v)`, `count()`, `toList()`, `reversed()`, `step($n)` (`$n ≤ 0` traps `ValueError`; count down with `reversed()->step($n)`).
 
-`Io`: `Io\print($s: string)` (string only; `echo` / `print` add the `(string)`), `Io\eprint($s)`, `Io\readLine(): ?string`. `readLine()` returns the line without its terminator (`\n` or `\r\n`; a lone `\r` is kept), `null` at end of input, and a final unterminated line as-is. Formatting (`printf`-style) is deferred; interpolation covers the POC.
+`Io`: `Io\print($s: string)` (string only; `echo` / `print` add the `(string)`), `Io\eprint($s: string)`, `Io\readLine(): ?string`. `readLine()` returns the line without its terminator (`\n` or `\r\n`; a lone `\r` is kept), `null` at end of input, and a final unterminated line as-is. Formatting (`printf`-style) is deferred; interpolation covers the POC.
 
-Request I/O (POC): `Env\get($name): ?string` and `Io\readAll(): bytes`.
+Request I/O (POC): `Env\get($name): ?string` and `Io\readAll(): bytes`. With `echo`, these form a CGI-style request contract, so the same handler runs unchanged under CGI and FastCGI.
 
-Text from the OS must be valid UTF-8 to become a `string`. `Io\readLine()` and `Env\get()` throw `EncodingException` on invalid input; invalid command-line arguments are reported before `main` runs, like an uncaught `EncodingException` (trace naming the argument, exit 1). Raw data stays available as `bytes` through `Io\readAll()`. With `echo`, these form a CGI-style request contract, so the same handler runs unchanged under CGI and FastCGI.
+Text from the OS must be valid UTF-8 to become a `string`. `Io\readLine()` and `Env\get()` throw `EncodingException` on invalid input; invalid command-line arguments are reported before `main` runs, like an uncaught `EncodingException` (trace naming the argument, exit 1). Raw data stays available as `bytes` through `Io\readAll()`.
 
 ## Grammar sketch
 
@@ -1049,7 +1050,7 @@ Also removed:
 POC scope:
 
 - **In:**
-  - Types: primitives, `string`, `bytes` (minimal; see open questions), `list<T>`, `map<K, V>`, `set<T>`, `tuple<…>`, `Range<T>`; `?T` and general unions with flow typing.
+  - Types: primitives, `string`, `bytes` (see Core library), `list<T>`, `map<K, V>`, `set<T>`, `tuple<…>`, `Range<T>`; `?T` and general unions with flow typing.
   - Functions: named arguments, defaults, variadics and spread; `fn` closures; first-class callables (`foo(...)`, `$obj->m(...)`).
   - Structs with `mutating`, copy-on-write, nested mutation, `inout`.
   - Classes: single inheritance, `extendable`, `abstract`, `final` methods, constructor promotion, `readonly` (locals, properties, `readonly class`), static properties with lazy initialization and poisoning, runtime exclusivity checks, `clone` and clone-with, `__destruct`, cycle collector. `self::` and `parent::`.

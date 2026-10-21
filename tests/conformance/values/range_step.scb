@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | 0 3 6 9
+// | caught ValueError
+
+namespace Conformance;
+
+function main(): void
+{
+    foreach ((0..=9)->step(3) as $i) {
+        echo $i, $i < 9 ? ' ' : "\n";
+    }
+    try {
+        $r: Range<int> = (0..=9)->step(0);
+    } catch (ValueError) {
+        echo "caught ValueError\n";
+    }
+}

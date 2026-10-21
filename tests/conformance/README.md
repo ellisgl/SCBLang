@@ -1,6 +1,6 @@
 # Conformance tests
 
-One `.scb` file per test, grouped by area in subdirectories. Expectations live in a header of `//` comments at the top of the file, before `namespace`.
+One `.scb` file per test (or one directory; see Multi-file tests), grouped by area in subdirectories. Expectations live in a header of `//` comments at the top of the file, before `namespace`.
 
 ## Directives
 

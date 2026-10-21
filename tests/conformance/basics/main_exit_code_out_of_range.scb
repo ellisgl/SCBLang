@@ -1,0 +1,8 @@
+// EXPECT-RUNTIME-ERROR: ValueError
+
+namespace Conformance;
+
+function main(): int
+{
+    return 256;
+}

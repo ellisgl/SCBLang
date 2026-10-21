@@ -1,0 +1,9 @@
+// EXPECT-COMPILE-ERROR: *
+
+namespace Conformance;
+
+function main(): void
+{
+    $flags: list<bool> = [true, false];
+    $flags->sort();
+}

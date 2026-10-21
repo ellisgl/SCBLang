@@ -1,0 +1,17 @@
+// EXPECT-STDOUT:
+// | a,b,c 1.5 true
+// | 2 2
+
+namespace Conformance;
+
+function main(): void
+{
+    $words: list<string> = ['c', 'a', 'b'];
+    $words->sort();
+    $fs: list<f64> = [2.5, 1.5];
+    $flags: set<bool> = [true, false, true];
+    $byFlag: map<bool, string> = [true => 'yes'];
+    echo $words->join(','), " ", $fs->min() ?? 0.0, " ", $byFlag->has(true) ? 'true' : 'false', "\n";
+    $keys: map<bytes, int> = [b"x" => 1, b"y" => 2];
+    echo $flags->count(), " ", $keys->count(), "\n";
+}
